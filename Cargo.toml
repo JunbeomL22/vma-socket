@@ -1,0 +1,19 @@
+[package]
+name = "vma_socket"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libc = "0.2"
+ctrlc = "3.2"
+
+[build-dependencies]
+cc = "1.0"
+
+[lib]
+name = "vma_socket"
+path = "src/lib.rs"
+
+[[bin]]
+name = "udp_test"
+path = "src/main.rs"
