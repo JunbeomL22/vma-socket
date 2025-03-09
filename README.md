@@ -17,8 +17,8 @@ VMA Socket provides a safe and ergonomic Rust interface to the VMA library, whic
 
 ## Prerequisites
 
-- Mellanox OFED drivers and libraries installed
-- VMA library (libvma) installed
+- Mellanox OFED drivers and libraries installed (tested on MLNX_OFED_LINUX-24.10-1.1.4.0)
+- VMA library (libvma) installed (tested on version 9.8.51)
 - Compatible Mellanox network adapters
 
 ## Installation
@@ -115,7 +115,7 @@ The repository includes example programs for both UDP and TCP in both Rust and C
 
 ```bash
 # Ensure VMA is in your LD_PRELOAD path
-export LD_PRELOAD=/usr/lib64/libvma.so.9.8.51
+export LD_PRELOAD=/usr/lib64/libvma.so.x.x.xx
 
 # UDP test in server mode
 cargo run --example udp_test -- server 127.0.0.1 5001

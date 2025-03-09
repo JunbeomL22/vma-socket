@@ -120,7 +120,7 @@ fn run_server(running: Arc<AtomicBool>, ip: &str, port: u16) {
                     }
                 }
                 Err(e) => {
-                    println!("Client read error: {}", e);
+                    println!("Client read error: {:?}", e);
                     client_opt = None;
                 }
             }
