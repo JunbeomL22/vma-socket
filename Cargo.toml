@@ -2,6 +2,7 @@
 name = "vma_socket"
 version = "0.1.0"
 edition = "2021"
+authors = ["Junbeom Lee <junbeoml22@gmail.com>"]
 
 [dependencies]
 libc = "0.2"
