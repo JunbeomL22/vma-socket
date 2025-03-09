@@ -202,10 +202,7 @@ impl UdpSocketWrapper {
         let mut socket = Box::new(unsafe { mem::zeroed::<UdpSocket>() });
         
         // Get options - either use provided ones or defaults
-        let c_options = match options {
-            Some(opts) => opts,
-            None => VmaOptions::default(),
-        };
+        let c_options = options.unwrap_or_default();
 
         // Initialize socket with options
         let result = unsafe { 

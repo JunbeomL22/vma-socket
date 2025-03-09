@@ -89,6 +89,8 @@ impl VmaOptions {
         }
     }
 
+    /// # Safety
+    /// This function is unsafe because it deallocates memory.
     /// Free the allocated memory for CPU cores
     pub unsafe fn free_cpu_cores(&mut self) {
         if !self.cpu_cores.is_null() {

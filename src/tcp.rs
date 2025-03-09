@@ -245,7 +245,7 @@ impl Client {
         };
         
         if result != TcpResult::TcpSuccess as i32 {
-            return Err(unsafe { mem::transmute(result) });
+            return Err(unsafe { mem::transmute::<i32, TcpResult>(result) });
         }
         
         Ok(bytes_sent)
@@ -267,7 +267,7 @@ impl Client {
         };
         
         if result != TcpResult::TcpSuccess as i32 {
-            return Err(unsafe { mem::transmute(result) });
+            return Err(unsafe { mem::transmute::<i32, TcpResult>(result) });
         }
         
         Ok(bytes_received)
@@ -280,7 +280,7 @@ impl Client {
         let result = unsafe { tcp_socket_close_client(&mut *self.inner) };
         
         if result != TcpResult::TcpSuccess as i32 {
-            return Err(unsafe { mem::transmute(result) });
+            return Err(unsafe { mem::transmute::<i32, TcpResult>(result) });
         }
         
         Ok(())
@@ -308,10 +308,7 @@ impl TcpSocketWrapper {
     pub fn new(options: Option<VmaOptions>) -> Result<Self, TcpResult> {
         let mut socket = Box::new(unsafe { mem::zeroed::<TcpSocket>() });
         
-        let c_options = match options {
-            Some(opts) => opts,
-            None => VmaOptions::default(),
-        };
+        let c_options = options.unwrap_or_default();
         
         let result = unsafe { 
             println!("Initializing TCP socket with options: use_socketxtreme={}, optimize_for_latency={}, ring_count={}",
@@ -321,7 +318,7 @@ impl TcpSocketWrapper {
         
         if result != TcpResult::TcpSuccess as i32 {
             println!("TCP socket initialization failed with code: {}", result);
-            return Err(unsafe { mem::transmute(result) });
+            return Err(unsafe { mem::transmute::<i32, TcpResult>(result) });
         }
         
         Ok(TcpSocketWrapper { socket })
@@ -333,7 +330,7 @@ impl TcpSocketWrapper {
         let result = unsafe { tcp_socket_bind(&mut *self.socket, c_addr.as_ptr(), port) };
         
         if result != TcpResult::TcpSuccess as i32 {
-            return Err(unsafe { mem::transmute(result) });
+            return Err(unsafe { mem::transmute::<i32, TcpResult>(result) });
         }
         
         Ok(())
@@ -344,7 +341,7 @@ impl TcpSocketWrapper {
         let result = unsafe { tcp_socket_listen(&mut *self.socket, backlog) };
         
         if result != TcpResult::TcpSuccess as i32 {
-            return Err(unsafe { mem::transmute(result) });
+            return Err(unsafe { mem::transmute::<i32, TcpResult>(result) });
         }
         
         Ok(())
@@ -358,7 +355,7 @@ impl TcpSocketWrapper {
         let result = unsafe { tcp_socket_accept(&mut *self.socket, &mut client, timeout_ms) };
         
         if result != TcpResult::TcpSuccess as i32 {
-            return Err(unsafe { mem::transmute(result) });
+            return Err(unsafe { mem::transmute::<i32, TcpResult>(result) });
         }
         
         Ok(Client::new(client))
@@ -372,7 +369,7 @@ impl TcpSocketWrapper {
         let result = unsafe { tcp_socket_connect(&mut *self.socket, c_addr.as_ptr(), port, timeout_ms) };
         
         if result != TcpResult::TcpSuccess as i32 {
-            return Err(unsafe { mem::transmute(result) });
+            return Err(unsafe { mem::transmute::<i32, TcpResult>(result) });
         }
         
         Ok(())
@@ -384,7 +381,7 @@ impl TcpSocketWrapper {
         let result = unsafe { tcp_socket_reconnect(&mut *self.socket, timeout_ms) };
         
         if result != TcpResult::TcpSuccess as i32 {
-            return Err(unsafe { mem::transmute(result) });
+            return Err(unsafe { mem::transmute::<i32, TcpResult>(result) });
         }
         
         Ok(())
@@ -408,7 +405,7 @@ impl TcpSocketWrapper {
         };
         
         if result != TcpResult::TcpSuccess as i32 {
-            return Err(unsafe { mem::transmute(result) });
+            return Err(unsafe { mem::transmute::<i32, TcpResult>(result) });
         }
         
         Ok(bytes_sent)
@@ -430,7 +427,7 @@ impl TcpSocketWrapper {
         };
         
         if result != TcpResult::TcpSuccess as i32 {
-            return Err(unsafe { mem::transmute(result) });
+            return Err(unsafe { mem::transmute::<i32, TcpResult>(result) });
         }
         
         Ok(bytes_received)
@@ -454,7 +451,7 @@ impl TcpSocketWrapper {
         };
         
         if result != TcpResult::TcpSuccess as i32 {
-            return Err(unsafe { mem::transmute(result) });
+            return Err(unsafe { mem::transmute::<i32, TcpResult>(result) });
         }
         
         Ok((rx_packets, tx_packets, rx_bytes, tx_bytes))
