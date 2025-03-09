@@ -96,7 +96,7 @@
 //! To run your application with VMA, use the `LD_PRELOAD` environment variable:
 //!
 //! ```bash
-//! LD_PRELOAD=/usr/lib64/libvma.so.9.8.51 ./your_application
+//! LD_PRELOAD=/usr/lib64/libvma.so.x.x.x ./your_application
 //! ```
 //!
 //! ## Module Structure
