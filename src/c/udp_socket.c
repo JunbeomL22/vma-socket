@@ -18,9 +18,11 @@
 #include <errno.h>
 #include <arpa/inet.h>  // Include for inet_pton
 #include "udp_socket.h"
+#include <mellanox/vma_extra.h>
 
-// Set VMA environment variables
+// Enhanced VMA environment setup function with performance optimizations
 static void setup_vma_env(const udp_vma_options_t* options) {
+    // Original settings
     if (options->use_socketxtreme) {
         setenv("VMA_SOCKETXTREME", "1", 1);
     }
@@ -32,6 +34,12 @@ static void setup_vma_env(const udp_vma_options_t* options) {
     if (options->use_polling) {
         setenv("VMA_RX_POLL", "1", 1);
         setenv("VMA_SELECT_POLL", "1", 1);
+        
+        // Add: prevent CPU yielding during polling for lower latency
+        setenv("VMA_RX_POLL_YIELD", "0", 1);
+        
+        // Add: skip OS during select operations for better performance
+        setenv("VMA_SELECT_SKIP_OS", "1", 1);
     }
     
     if (options->ring_count > 0) {
@@ -44,19 +52,25 @@ static void setup_vma_env(const udp_vma_options_t* options) {
     if (options->use_socketxtreme) {
         setenv("VMA_RING_ALLOCATION_LOGIC_TX", "0", 1);
         setenv("VMA_THREAD_MODE", "1", 1);
+        
+        // Add: Keep queue pairs full for better throughput with SocketXtreme
+        setenv("VMA_CQ_KEEP_QP_FULL", "1", 1);
     }
+    
+    // New optimizations
+    
+    // Use hugepages for better memory performance
+    setenv("VMA_MEMORY_ALLOCATION_TYPE", "2", 1);
+    
+    // Increase receive and transmit buffer counts 
+    setenv("VMA_RX_BUFS", "10000", 1);
+    setenv("VMA_TX_BUFS", "10000", 1);
+    
+    // Enable thread affinity for better CPU cache utilization
+    setenv("VMA_THREAD_AFFINITY", "1", 1);
 }
 
-// Set default VMA options
-static void set_default_options(udp_vma_options_t* options) {
-    options->use_socketxtreme = true;
-    options->optimize_for_latency = true;
-    options->use_polling = true;
-    options->ring_count = 4;
-    options->buffer_size = 65536;  // 64KB
-    options->enable_timestamps = true;
-}
-
+// Enhanced UDP socket initialization with additional optimizations
 udp_result_t udp_socket_init(udp_socket_t* udp_socket, const udp_vma_options_t* options) {
     if (!udp_socket) {
         return UDP_ERROR_INVALID_PARAM;
@@ -104,6 +118,19 @@ udp_result_t udp_socket_init(udp_socket_t* udp_socket, const udp_vma_options_t* 
                     &buffer_size, sizeof(buffer_size)) < 0) {
             return UDP_ERROR_SOCKET_OPTION;
         }
+    }
+    
+    // Enable timestamps if requested
+    if (udp_socket->vma_options.enable_timestamps) {
+        int optval = 1;
+        // Use more precise hardware timestamps when available
+        setsockopt(udp_socket->socket_fd, SOL_SOCKET, SO_TIMESTAMPNS, &optval, sizeof(optval));
+    }
+    
+    // Optimize VMA ring allocation when using SocketXtreme
+    if (udp_socket->vma_options.use_socketxtreme) {
+        int optval = 1;
+        setsockopt(udp_socket->socket_fd, SOL_SOCKET, SO_VMA_RING_ALLOC_LOGIC, &optval, sizeof(optval));
     }
     
     return UDP_SUCCESS;

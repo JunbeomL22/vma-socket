@@ -7,54 +7,44 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::os::raw::c_int;
 use std::time::Duration;
 
-/// Common VMA options structure for both TCP and UDP socket types.
-///
-/// This structure allows configuration of VMA-specific options that control
-/// the performance and behavior of the underlying socket implementation.
+/// Enhanced VMA options structure with additional performance configuration.
 #[derive(Debug, Clone)]
 pub struct VmaOptions {
-    /// Enable SocketXtreme mode for maximum performance in single-threaded applications.
-    ///
-    /// SocketXtreme bypasses the kernel for even lower latency communication but is
-    /// primarily designed for single-threaded use cases.
+    /// Use SocketXtreme for optimized performance
     pub use_socketxtreme: bool,
-
-    /// Optimize the socket for low latency rather than high throughput.
-    ///
-    /// When set to true, the socket implementation prioritizes minimizing latency
-    /// potentially at the expense of maximum throughput.
+    /// Optimize for low latency (may reduce throughput)
     pub optimize_for_latency: bool,
-
-    /// Use polling mode instead of event-based notification.
-    ///
-    /// Polling mode can provide lower latency but at the cost of higher CPU usage,
-    /// as it continuously checks for new data rather than waiting for notifications.
+    /// Use polling for faster packet processing
     pub use_polling: bool,
-
-    /// Number of VMA rings to allocate.
-    ///
-    /// For multi-threaded applications, increasing this value can improve performance
-    /// by allowing multiple threads to process network operations concurrently.
+    /// Number of rings to use for polling (affects VMA_RING_ALLOCATION_LOGIC_RX)
     pub ring_count: i32,
-
-    /// Size of send and receive buffers.
-    ///
-    /// Setting an appropriate buffer size for your application can improve performance
-    /// by reducing the number of system calls needed for larger data transfers.
+    /// Size of the buffer to use for packet processing (affects VMA_PACKET_SIZE)
     pub buffer_size: i32,
-
-    /// Enable hardware timestamps for received packets.
-    ///
-    /// When supported by the network adapter, hardware timestamps provide more
-    /// accurate timing information about when packets were received.
+    /// Enable packet timestamps for latency measurements (affects VMA_PACKET_TIMESTAMP)
     pub enable_timestamps: bool,
+    /// CPU cores to use for VMA threads (affects VMA_THREAD_AFFINITY_ID)
+    pub cpu_cores: Option<Vec<usize>>,
+    
+    /// Use hugepages for memory allocation (affects VMA_MEMORY_ALLOCATION_TYPE)
+    pub use_hugepages: bool,
+    
+    /// Number of transmit buffers (affects VMA_TX_BUFS)
+    pub tx_bufs: u32,
+    
+    /// Number of receive buffers (affects VMA_RX_BUFS)
+    pub rx_bufs: u32,
+    
+    /// Prevent CPU yielding during polling (affects VMA_RX_POLL_YIELD)
+    pub disable_poll_yield: bool,
+    
+    /// Skip OS during select operations (affects VMA_SELECT_SKIP_OS)
+    pub skip_os_select: bool,
+    
+    /// Keep queue pairs full for better throughput (affects VMA_CQ_KEEP_QP_FULL)
+    pub keep_qp_full: bool,
 }
 
 impl Default for VmaOptions {
-    /// Creates a default configuration with reasonable settings for most applications.
-    ///
-    /// The default configuration enables SocketXtreme, optimizes for latency, enables
-    /// polling mode, uses 4 rings, sets a 64KB buffer size, and enables timestamps.
     fn default() -> Self {
         VmaOptions {
             use_socketxtreme: true,
@@ -63,6 +53,124 @@ impl Default for VmaOptions {
             ring_count: 4,
             buffer_size: 65536, // 64KB
             enable_timestamps: true,
+            cpu_cores: None,
+            use_hugepages: true,
+            tx_bufs: 10000,
+            rx_bufs: 10000,
+            disable_poll_yield: true,
+            skip_os_select: true,
+            keep_qp_full: true,
+        }
+    }
+}
+
+impl VmaOptions {
+    /// Apply all VMA environment variables based on these options
+    pub fn apply_environment_variables(&self) {
+        use std::env;
+        
+        // Original VMA settings
+        if self.use_socketxtreme {
+            env::set_var("VMA_SOCKETXTREME", "1");
+        }
+        
+        if self.optimize_for_latency {
+            env::set_var("VMA_SPEC", "latency");
+        }
+        
+        if self.use_polling {
+            env::set_var("VMA_RX_POLL", "1");
+            env::set_var("VMA_SELECT_POLL", "1");
+            
+            // Additional polling optimizations
+            if self.disable_poll_yield {
+                env::set_var("VMA_RX_POLL_YIELD", "0");
+            }
+            
+            if self.skip_os_select {
+                env::set_var("VMA_SELECT_SKIP_OS", "1");
+            }
+        }
+        
+        if self.ring_count > 0 {
+            env::set_var("VMA_RING_ALLOCATION_LOGIC_RX", self.ring_count.to_string());
+        }
+        
+        // SocketXtreme optimization
+        if self.use_socketxtreme {
+            env::set_var("VMA_RING_ALLOCATION_LOGIC_TX", "0");
+            env::set_var("VMA_THREAD_MODE", "1");
+            
+            if self.keep_qp_full {
+                env::set_var("VMA_CQ_KEEP_QP_FULL", "1");
+            }
+        } else {
+            // Multi-threaded mode when not using SocketXtreme
+            env::set_var("VMA_THREAD_MODE", "3");
+        }
+        
+        // Apply CPU affinity if specified
+        if let Some(cores) = &self.cpu_cores {
+            if !cores.is_empty() {
+                env::set_var("VMA_THREAD_AFFINITY", "1");
+                let cores_str = cores.iter()
+                    .map(|c| c.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",");
+                env::set_var("VMA_THREAD_AFFINITY_ID", cores_str);
+            }
+        }
+        
+        // Apply hugepages setting
+        if self.use_hugepages {
+            env::set_var("VMA_MEMORY_ALLOCATION_TYPE", "2");
+        }
+        
+        // Apply buffer count settings
+        if self.tx_bufs > 0 {
+            env::set_var("VMA_TX_BUFS", self.tx_bufs.to_string());
+        }
+        
+        if self.rx_bufs > 0 {
+            env::set_var("VMA_RX_BUFS", self.rx_bufs.to_string());
+        }
+    }
+    
+    /// Create options optimized for ultra-low latency
+    pub fn low_latency() -> Self {
+        VmaOptions {
+            use_socketxtreme: true,
+            optimize_for_latency: true,
+            use_polling: true,
+            ring_count: 1, // Single ring for lower latency
+            buffer_size: 8192, // Smaller buffers
+            enable_timestamps: true,
+            cpu_cores: None, // Set this based on your system
+            use_hugepages: true,
+            tx_bufs: 32,
+            rx_bufs: 16,
+            disable_poll_yield: true,
+            skip_os_select: true,
+            keep_qp_full: true,
+        }
+    }
+    
+    /// Create options optimized for high throughput
+    pub fn high_throughput() -> Self {
+        VmaOptions {
+            use_socketxtreme: true,
+            optimize_for_latency: false, // Optimize for throughput instead
+            use_polling: true,
+            ring_count: 4, // Multiple rings for throughput
+            buffer_size: 65536, // Larger buffers (64KB)
+            enable_timestamps: false, // Disable timestamps for throughput
+            cpu_cores: None, // Set this based on your system
+            use_hugepages: true,
+            tx_bufs: 20000, // More buffers for high throughput
+            rx_bufs: 20000,
+            disable_poll_yield: false, // Allow yielding for throughput
+            skip_os_select: true,
+            keep_qp_full: true,
         }
     }
 }

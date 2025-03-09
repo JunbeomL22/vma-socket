@@ -47,14 +47,7 @@ fn run_server(running: Arc<AtomicBool>, ip: &str, port: u16) {
     println!("TCP Server mode (receiving): {}:{}", ip, port);
 
     // Set VMA options
-    let vma_options = VmaOptions {
-        use_socketxtreme: true,
-        optimize_for_latency: true,
-        use_polling: true,
-        ring_count: 4,
-        buffer_size: BUFFER_SIZE as i32,
-        enable_timestamps: true,
-    };
+    let vma_options = VmaOptions::low_latency();
 
     // Create TCP socket
     let mut socket = match VmaTcpSocket::with_options(vma_options) {
@@ -137,14 +130,7 @@ fn run_client(running: Arc<AtomicBool>, ip: &str, port: u16) {
     println!("TCP Client mode (sending): {}:{}", ip, port);
 
     // Set VMA options
-    let vma_options = VmaOptions {
-        use_socketxtreme: true,
-        optimize_for_latency: true,
-        use_polling: true,
-        ring_count: 4,
-        buffer_size: BUFFER_SIZE as i32,
-        enable_timestamps: true,
-    };
+    let vma_options = VmaOptions::low_latency();
 
     // Create TCP socket
     let mut socket = match VmaTcpSocket::with_options(vma_options) {

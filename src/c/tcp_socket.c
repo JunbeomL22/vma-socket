@@ -22,6 +22,7 @@
 #include <errno.h>
 #include <arpa/inet.h>
 #include "tcp_socket.h"
+#include <mellanox/vma_extra.h>
 
 // Forward declarations of static functions
 static bool would_block(void);
@@ -44,6 +45,12 @@ static void setup_vma_env(const tcp_vma_options_t* options) {
     if (options->use_polling) {
         setenv("VMA_RX_POLL", "1", 1);
         setenv("VMA_SELECT_POLL", "1", 1);
+        
+        // Add: prevent CPU yielding during polling for lower latency
+        setenv("VMA_RX_POLL_YIELD", "0", 1);
+        
+        // Add: skip OS during select operations for better performance
+        setenv("VMA_SELECT_SKIP_OS", "1", 1);
     }
     
     if (options->ring_count > 0) {
@@ -56,7 +63,33 @@ static void setup_vma_env(const tcp_vma_options_t* options) {
     if (options->use_socketxtreme) {
         setenv("VMA_RING_ALLOCATION_LOGIC_TX", "0", 1);
         setenv("VMA_THREAD_MODE", "1", 1);
+        
+        // Add: Keep queue pairs full for better throughput with SocketXtreme
+        setenv("VMA_CQ_KEEP_QP_FULL", "1", 1);
+    } else {
+        // Use multi-threaded mode when not using SocketXtreme
+        setenv("VMA_THREAD_MODE", "3", 1);
     }
+    
+    // New optimizations
+    
+    // Use hugepages for better memory performance
+    setenv("VMA_MEMORY_ALLOCATION_TYPE", "2", 1);
+    
+    // Increase receive and transmit buffer counts
+    setenv("VMA_RX_BUFS", "10000", 1);
+    setenv("VMA_TX_BUFS", "10000", 1);
+    
+    // Enable thread affinity for better CPU cache utilization
+    setenv("VMA_THREAD_AFFINITY", "1", 1);
+    
+    // TCP-specific optimizations
+    
+    // Set TCP internal read buffer size to improve throughput
+    setenv("VMA_TCP_STREAM_RX_SIZE", "16777216", 1); // 16MB
+    
+    // Set RX ZERO COPY mode for TCP
+    setenv("VMA_TCP_RX_ZERO_COPY", "1", 1);
 }
 
 // Set default VMA options
@@ -128,7 +161,7 @@ tcp_result_t tcp_socket_init(tcp_socket_t* sock, const tcp_vma_options_t* option
     // Set VMA environment variables
     setup_vma_env(&sock->vma_options);
     
-    // Create socket - use the socket() function directly, not through the parameter name
+    // Create socket
     sock->socket_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock->socket_fd < 0) {
         return TCP_ERROR_SOCKET_CREATE;
@@ -164,6 +197,12 @@ tcp_result_t tcp_socket_init(tcp_socket_t* sock, const tcp_vma_options_t* option
         return TCP_ERROR_SOCKET_OPTION;
     }
     
+    // Optimize VMA ring allocation when using SocketXtreme
+    if (sock->vma_options.use_socketxtreme) {
+        int optval = 1;
+        setsockopt(sock->socket_fd, SOL_SOCKET, SO_VMA_RING_ALLOC_LOGIC, &optval, sizeof(optval));
+    }
+    
     // Configure keepalive parameters
     int keepidle = 60;  // Start sending keepalive probes after this many seconds of idle time
     int keepintvl = 10; // Send a keepalive probe every this many seconds
@@ -192,6 +231,13 @@ tcp_result_t tcp_socket_init(tcp_socket_t* sock, const tcp_vma_options_t* option
     int nodelay = 1;
     if (setsockopt(sock->socket_fd, IPPROTO_TCP, TCP_NODELAY, 
                 &nodelay, sizeof(nodelay)) < 0) {
+        // Not fatal, just continue
+    }
+    
+    // Enable TCP quickack for lower latency
+    int quickack = 1;
+    if (setsockopt(sock->socket_fd, IPPROTO_TCP, TCP_QUICKACK,
+                &quickack, sizeof(quickack)) < 0) {
         // Not fatal, just continue
     }
     
