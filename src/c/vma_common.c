@@ -1,7 +1,7 @@
 /**
  * vma_common.c - Common VMA functionality implementation
  */
-#define _GNU_SOURCE  // Enable GNU extensions
+// #define _GNU_SOURCE  // Enable GNU extensions
 
 #include <stdio.h>
 #include <stdlib.h>

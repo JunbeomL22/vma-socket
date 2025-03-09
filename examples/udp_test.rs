@@ -4,7 +4,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-use vma_socket::udp::{VmaOptions, VmaUdpSocket};
+use vma_socket::udp::VmaUdpSocket;
+use vma_socket::common::VmaOptions;
 
 const BUFFER_SIZE: usize = 4096;
 const TEST_DURATION: u64 = 10; // Test duration in seconds
@@ -45,17 +46,10 @@ fn main() {
 fn run_server(running: Arc<AtomicBool>, ip: &str, port: u16) {
     println!("Server mode (receiving): {}:{}", ip, port);
 
-    // Set VMA options
-    let vma_options = VmaOptions {
-        use_socketxtreme: true,
-        optimize_for_latency: true,
-        use_polling: true,
-        ring_count: 4,
-        buffer_size: BUFFER_SIZE as i32,
-        enable_timestamps: true,
-    };
+    // Set VMA options - using low latency profile
+    let vma_options = VmaOptions::low_latency();
 
-    // Create UDP socket
+    // Create UDP socket with detailed error handling
     let mut socket = match VmaUdpSocket::with_options(vma_options) {
         Ok(s) => s,
         Err(e) => {
@@ -110,17 +104,10 @@ fn run_server(running: Arc<AtomicBool>, ip: &str, port: u16) {
 fn run_client(running: Arc<AtomicBool>, ip: &str, port: u16) {
     println!("Client mode (sending): {}:{}", ip, port);
 
-    // Set VMA options
-    let vma_options = VmaOptions {
-        use_socketxtreme: true,
-        optimize_for_latency: true,
-        use_polling: true,
-        ring_count: 4,
-        buffer_size: BUFFER_SIZE as i32,
-        enable_timestamps: true,
-    };
+    // Set VMA options - using low latency profile
+    let vma_options = VmaOptions::low_latency();
 
-    // Create UDP socket
+    // Create UDP socket with detailed error handling
     let mut socket = match VmaUdpSocket::with_options(vma_options) {
         Ok(s) => s,
         Err(e) => {

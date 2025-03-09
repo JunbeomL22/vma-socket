@@ -46,10 +46,10 @@ fn main() {
 fn run_server(running: Arc<AtomicBool>, ip: &str, port: u16) {
     println!("TCP Server mode (receiving): {}:{}", ip, port);
 
-    // Set VMA options
+    // Set VMA options - using low latency profile
     let vma_options = VmaOptions::low_latency();
 
-    // Create TCP socket
+    // Create TCP socket with detailed error handling
     let mut socket = match VmaTcpSocket::with_options(vma_options) {
         Ok(s) => s,
         Err(e) => {
@@ -129,10 +129,10 @@ fn run_server(running: Arc<AtomicBool>, ip: &str, port: u16) {
 fn run_client(running: Arc<AtomicBool>, ip: &str, port: u16) {
     println!("TCP Client mode (sending): {}:{}", ip, port);
 
-    // Set VMA options
+    // Set VMA options - using low latency profile
     let vma_options = VmaOptions::low_latency();
 
-    // Create TCP socket
+    // Create TCP socket with detailed error handling
     let mut socket = match VmaTcpSocket::with_options(vma_options) {
         Ok(s) => s,
         Err(e) => {

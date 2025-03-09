@@ -16,6 +16,7 @@ typedef struct {
     bool use_socketxtreme;       // Whether to use SocketXtreme mode
     bool optimize_for_latency;   // Whether to optimize for latency (useful for real-time applications)
     bool use_polling;            // Whether to use polling mode (reduces latency at the cost of higher CPU usage)
+    bool non_blocking;           // Whether to use non-blocking mode
     int ring_count;              // Number of rings (used for load balancing and performance optimization)
     int buffer_size;             // Default buffer size
     bool enable_timestamps;      // Whether to enable timestamps

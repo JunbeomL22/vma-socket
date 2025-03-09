@@ -2,7 +2,6 @@
  * tcp_socket.c - TCP Socket Implementation with VMA Support
  */
 #define _POSIX_C_SOURCE 199309L
-#define _GNU_SOURCE  // Enable GNU extensions
 
 #include <fcntl.h>
 #include <time.h>
