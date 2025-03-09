@@ -3,6 +3,8 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::os::raw::c_int;
 use std::time::Duration;
+use std::alloc::{alloc, dealloc, Layout};
+use std::ptr;
 
 /// C-compatible VMA options structure that directly matches the C definition.
 #[repr(C)]
@@ -60,6 +62,42 @@ impl Default for VmaOptions {
 }
 
 impl VmaOptions {
+    /// Push a CPU core to the list of cores
+    pub fn push_core(&mut self, core: c_int) {
+        unsafe {
+            // Allocate memory for the new array
+            let new_count = self.cpu_cores_count + 1;
+            let layout = Layout::array::<c_int>(new_count as usize).unwrap();
+            let new_ptr = alloc(layout) as *mut c_int;
+
+            if !new_ptr.is_null() {
+                // Copy existing cores to the new array
+                if !self.cpu_cores.is_null() {
+                    ptr::copy_nonoverlapping(self.cpu_cores, new_ptr, self.cpu_cores_count as usize);
+                    // Free the old array
+                    let old_layout = Layout::array::<c_int>(self.cpu_cores_count as usize).unwrap();
+                    dealloc(self.cpu_cores as *mut u8, old_layout);
+                }
+
+                // Add the new core to the array
+                *new_ptr.add(self.cpu_cores_count as usize) = core;
+
+                // Update the struct with the new array and count
+                self.cpu_cores = new_ptr;
+                self.cpu_cores_count = new_count;
+            }
+        }
+    }
+
+    /// Free the allocated memory for CPU cores
+    pub unsafe fn free_cpu_cores(&mut self) {
+        if !self.cpu_cores.is_null() {
+            let layout = Layout::array::<c_int>(self.cpu_cores_count as usize).unwrap();
+            dealloc(self.cpu_cores as *mut u8, layout);
+            self.cpu_cores = ptr::null_mut();
+            self.cpu_cores_count = 0;
+        }
+    }
     /// Create options optimized for ultra-low latency
     pub fn low_latency() -> Self {
         VmaOptions {

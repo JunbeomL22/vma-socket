@@ -1,7 +1,95 @@
-//! High-performance UDP socket implementation using the VMA (Messaging Accelerator) library.
+//! UDP socket implementation accelerated by the VMA (Messaging Accelerator) library.
 //!
-//! This module provides a Rust wrapper around the VMA-accelerated UDP sockets, which offer
-//! extremely low latency and high throughput networking on supported hardware.
+//! This module provides high-performance UDP sockets designed for ultra-low latency 
+//! networking applications. It leverages the Mellanox VMA library to bypass kernel 
+//! overhead and achieve microsecond-level latencies on supported RDMA hardware.
+//!
+//! The implementation consists of both high-level, safe Rust abstractions ([`VmaUdpSocket`])
+//! and lower-level FFI bindings to the C VMA library ([`UdpSocketWrapper`]).
+//!
+//! # Features
+//!
+//! - Direct hardware access for minimal latency (kernel bypass)
+//! - Zero-copy optimizations where possible
+//! - Configurable latency/throughput profiles
+//! - Support for timestamping on packet reception
+//! - Socket polling modes for lowest possible latency
+//! - Comprehensive performance tuning options
+//!
+//! # Performance Considerations
+//!
+//! For best performance:
+//!
+//! - Use `VmaOptions::low_latency()` for latency-sensitive applications
+//! - Enable polling mode for lowest latencies (higher CPU usage)
+//! - Consider using SocketXtreme mode for maximum performance
+//! - Set appropriate CPU affinity for networking threads
+//! - Use direct connection (via `connect()`) when sending to a single target
+//!
+//! # Examples
+//!
+//! ## Creating a UDP server
+//!
+//! ```rust,no_run
+//! use std::time::Duration;
+//! use vma_socket::udp::VmaUdpSocket;
+//! use vma_socket::common::VmaOptions;
+//!
+//! // Create socket with low latency optimizations
+//! let options = VmaOptions::low_latency();
+//! let mut socket = VmaUdpSocket::with_options(options).unwrap();
+//!
+//! // Bind to address and port
+//! socket.bind("0.0.0.0", 5001).unwrap();
+//!
+//! // Receive buffer
+//! let mut buffer = vec![0u8; 4096];
+//!
+//! // Receive data with timeout
+//! match socket.recv_from(&mut buffer, Some(Duration::from_millis(100))).unwrap() {
+//!     Some(packet) => {
+//!         println!("Received {} bytes from {}", packet.data.len(), packet.src_addr);
+//!         println!("Packet timestamp: {} ns", packet.timestamp);
+//!     },
+//!     None => println!("No packet received (timeout)"),
+//! }
+//! ```
+//!
+//! ## Creating a UDP client
+//!
+//! ```rust,no_run
+//! use vma_socket::udp::VmaUdpSocket;
+//! use vma_socket::common::VmaOptions;
+//!
+//! // Create socket with throughput optimizations
+//! let options = VmaOptions::high_throughput();
+//! let mut socket = VmaUdpSocket::with_options(options).unwrap();
+//!
+//! // Connect to target (sets default destination)
+//! socket.connect("192.168.1.100", 5001).unwrap();
+//!
+//! // Send data
+//! let data = b"Hello VMA!";
+//! let bytes_sent = socket.send(data).unwrap();
+//! println!("Sent {} bytes", bytes_sent);
+//!
+//! // Or send to a specific target without prior connect()
+//! socket.send_to(data, "192.168.1.101", 5002).unwrap();
+//! ```
+//!
+//! ## Performance statistics
+//!
+//! ```rust,no_run
+//! use vma_socket::udp::VmaUdpSocket;
+//!
+//! let mut socket = VmaUdpSocket::new().unwrap();
+//! // ... use socket ...
+//!
+//! // Get performance statistics
+//! let (rx_packets, tx_packets, rx_bytes, tx_bytes) = socket.get_stats().unwrap();
+//! println!("Stats: RX {}p/{}b, TX {}p/{}b", 
+//!          rx_packets, rx_bytes, tx_packets, tx_bytes);
+//! ```
 
 use std::ffi::{c_void, CString};
 use std::mem;

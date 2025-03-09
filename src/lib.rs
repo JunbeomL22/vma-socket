@@ -1,114 +1,109 @@
 //! # VMA Socket
 //!
-//! A Rust wrapper library for high-performance networking using the Mellanox VMA (Messaging Accelerator) library.
+//! A Rust wrapper library for the Mellanox VMA (Messaging Accelerator) library, providing 
+//! high-performance networking capabilities for ultra-low latency applications.
 //!
-//! This library provides both UDP and TCP socket implementations that leverage VMA for extremely
-//! low-latency and high-throughput networking on compatible hardware. The implementation includes
-//! both low-level FFI bindings to the C VMA library and high-level, safe Rust abstractions.
+//! This library offers safe and ergonomic Rust bindings to VMA, which leverages RDMA 
+//! (Remote Direct Memory Access) technology to bypass kernel overhead and deliver 
+//! extremely low latency networking. The implementation includes both safe, high-level
+//! Rust abstractions and lower-level FFI bindings to the C VMA library.
 //!
-//! ## Features
+//! ## Core Features
 //!
-//! - High-performance UDP sockets optimized for low-latency applications
-//! - High-performance TCP sockets with connection management
-//! - Easy-to-use Rust API with safe abstractions
-//! - VMA acceleration leveraging RDMA capabilities
-//! - Fine-grained control over socket parameters
+//! - **Ultra-low latency**: Direct hardware access bypassing kernel overhead
+//! - **High-level Rust API**: Safe, ergonomic wrappers for VMA functionality
+//! - **Comprehensive socket types**: Support for both UDP and TCP sockets
+//! - **Fine-grained control**: Detailed configuration of VMA performance parameters
+//! - **Minimal overhead**: Thin wrappers that preserve VMA's performance benefits
 //!
 //! ## Requirements
 //!
-//! - Mellanox OFED drivers and libraries
-//! - VMA library (libvma)
-//! - Compatible Mellanox network adapters
+//! - Mellanox RDMA-capable network adapter (ConnectX series)
+//! - Mellanox OFED drivers installed
+//! - VMA library (`libvma.so`) installed
+//! - Linux environment
 //!
-//! ## Example: UDP Server
+//! ## UDP Example
 //!
-//! ```rust
+//! ```rust,no_run
 //! use std::time::Duration;
-//! use vma_socket::udp::{VmaOptions, VmaUdpSocket};
+//! use vma_socket::udp::VmaUdpSocket;
+//! use vma_socket::common::VmaOptions;
 //!
-//! fn run_udp_server() {
-//!     // Create socket with custom VMA options for maximum performance
-//!     let vma_options = VmaOptions {
-//!         use_socketxtreme: true,
-//!         optimize_for_latency: true,
-//!         use_polling: true,
-//!         ring_count: 4,
-//!         buffer_size: 4096,
-//!         enable_timestamps: true,
-//!     };
-//!
-//!     // Create and bind the socket
-//!     let mut socket = VmaUdpSocket::with_options(vma_options).unwrap();
-//!     socket.bind("0.0.0.0", 5001).unwrap();
-//!     println!("UDP server listening on 0.0.0.0:5001");
-//!
+//! fn udp_example() -> Result<(), String> {
+//!     // Create socket with low-latency profile
+//!     let vma_options = VmaOptions::low_latency();
+//!     let mut socket = VmaUdpSocket::with_options(vma_options)?;
+//!     
+//!     // Server: bind to a port
+//!     socket.bind("0.0.0.0", 5001)?;
+//!     
 //!     // Receive buffer
 //!     let mut buffer = vec![0u8; 4096];
 //!     
-//!     loop {
-//!         // Wait for incoming packets with 100ms timeout
-//!         match socket.recv_from(&mut buffer, Some(Duration::from_millis(100))) {
-//!             Ok(Some(packet)) => {
-//!                 println!("Received {} bytes from {}", packet.data.len(), packet.src_addr);
-//!                 
-//!                 // Echo data back to sender
-//!                 let ip = packet.src_addr.ip().to_string();
-//!                 let port = packet.src_addr.port();
-//!                 socket.send_to(&packet.data, ip, port).unwrap();
-//!             },
-//!             Ok(None) => {
-//!                 // Timeout - continue
-//!             },
-//!             Err(e) => {
-//!                 eprintln!("Error: {}", e);
-//!                 break;
-//!             }
-//!         }
+//!     // Wait for incoming packets with timeout
+//!     match socket.recv_from(&mut buffer, Some(Duration::from_millis(100)))? {
+//!         Some(packet) => {
+//!             println!("Received {} bytes from {}", packet.data.len(), packet.src_addr);
+//!             
+//!             // Echo data back to sender
+//!             let ip = packet.src_addr.ip().to_string();
+//!             let port = packet.src_addr.port();
+//!             socket.send_to(&packet.data, ip, port)?;
+//!         },
+//!         None => println!("No packet received (timeout)"),
 //!     }
+//!     
+//!     Ok(())
 //! }
 //! ```
 //!
-//! ## Example: TCP Server
+//! ## TCP Example
 //!
-//! ```rust
+//! ```rust,no_run
 //! use std::time::Duration;
 //! use vma_socket::tcp::VmaTcpSocket;
 //! use vma_socket::common::VmaOptions;
 //!
-//! fn run_tcp_server() {
-//!     // Create socket with default VMA options
-//!     let mut socket = VmaTcpSocket::new().unwrap();
+//! fn tcp_server_example() -> Result<(), String> {
+//!     // Create socket with performance optimizations
+//!     let mut socket = VmaTcpSocket::with_options(VmaOptions::low_latency())?;
 //!     
 //!     // Bind and listen
-//!     socket.bind("0.0.0.0", 5002).unwrap();
-//!     socket.listen(10).unwrap();
-//!     println!("TCP server listening on 0.0.0.0:5002");
+//!     socket.bind("0.0.0.0", 5002)?;
+//!     socket.listen(10)?;
 //!     
-//!     // Accept and handle clients
-//!     while let Ok(Some(mut client)) = socket.accept(Some(Duration::from_secs(1))) {
+//!     // Accept clients with timeout
+//!     if let Some(mut client) = socket.accept(Some(Duration::from_secs(1)))? {
 //!         println!("Connection from {}", client.address);
 //!         
-//!         // Receive buffer
+//!         // Receive data
 //!         let mut buffer = vec![0u8; 1024];
+//!         let received = client.recv(&mut buffer, Some(Duration::from_millis(100)))?;
 //!         
-//!         // Echo server - read data and send it back
-//!         match client.recv(&mut buffer, Some(Duration::from_millis(100))) {
-//!             Ok(len) if len > 0 => {
-//!                 println!("Received {} bytes", len);
-//!                 client.send(&buffer[0..len]).unwrap();
-//!             },
-//!             Ok(_) => println!("No data or connection closed"),
-//!             Err(e) => println!("Error: {}", e),
+//!         // Echo back received data
+//!         if received > 0 {
+//!             client.send(&buffer[0..received])?;
 //!         }
 //!     }
+//!     
+//!     Ok(())
 //! }
+//! ```
+//!
+//! ## Running with VMA
+//!
+//! To run your application with VMA, use the `LD_PRELOAD` environment variable:
+//!
+//! ```bash
+//! LD_PRELOAD=/usr/lib64/libvma.so.9.8.51 ./your_application
 //! ```
 //!
 //! ## Module Structure
 //!
-//! - `udp`: High-performance UDP socket implementation
-//! - `tcp`: High-performance TCP socket implementation
-//! - `common`: Shared types and utilities used by both implementations
+//! - [`udp`]: High-performance UDP socket implementation
+//! - [`tcp`]: High-performance TCP socket implementation
+//! - [`common`]: Shared types and utilities used by both implementations
 
 /// UDP socket implementation
 pub mod udp;

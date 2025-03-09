@@ -1,25 +1,32 @@
-# VMA Socket
+# vma_socket
 
-A Rust wrapper library providing high-performance network sockets using the RDMA-accelerated Mellanox Messaging Accelerator (VMA) library.
+A Rust wrapper for the Mellanox VMA (Messaging Accelerator) library, providing high-performance networking capabilities for ultra-low latency applications.
 
 ## Overview
 
-VMA Socket provides a safe and ergonomic Rust interface to the VMA library, which offers extremely low-latency and high-throughput networking on supported hardware. This library includes both low-level bindings to the C VMA library as well as high-level Rust abstractions.
+`vma_socket` provides a safe and ergonomic Rust interface to the VMA library, which leverages RDMA (Remote Direct Memory Access) technology to bypass kernel overhead and deliver extremely low latency networking. This library is particularly useful for:
+
+- High-frequency trading applications
+- Real-time financial systems
+- Low-latency messaging platforms
+- High-performance computing
+- Network appliances
 
 ## Features
 
-- **High-performance UDP sockets**: Optimized for low-latency and high-throughput applications
-- **High-performance TCP sockets**: With connection management and streaming capabilities
-- **Easy-to-use Rust API**: Safe abstractions over the C bindings
-- **VMA Acceleration**: Takes advantage of RDMA capabilities on compatible hardware
-- **Fine-grained control**: Configure VMA options for your specific use case
-- **Zero-copy**: Minimizes memory operations for maximum performance
+- **High-level Rust API**: Ergonomic Rust wrappers around the VMA C library
+- **Ultra-low latency**: Direct access to VMA's performance optimizations
+- **Comprehensive socket types**: Support for both UDP and TCP sockets
+- **Safe abstractions**: Memory-safe wrappers around the C implementation
+- **Configurable options**: Fine-grained control of VMA performance parameters
+- **Detailed statistics**: Access to packet and byte counters for monitoring
 
-## Prerequisites
+## Requirements
 
-- Mellanox OFED drivers and libraries installed (tested on MLNX_OFED_LINUX-24.10-1.1.4.0)
-- VMA library (libvma) installed (tested on version 9.8.51)
-- Compatible Mellanox network adapters
+- Mellanox RDMA-capable network adapter (ConnectX-3/4/5/6/7 or better)
+- Mellanox OFED drivers installed
+- VMA library (`libvma.so`) installed
+- Linux environment (VMA is Linux-only)
 
 ## Installation
 
@@ -30,7 +37,7 @@ Add this to your `Cargo.toml`:
 vma_socket = "0.1.0"
 ```
 
-Ensure that the VMA library is installed on your system. This is typically available through the Mellanox OFED package.
+Make sure you have the VMA library installed on your system. The VMA library is typically installed with Mellanox OFED packages.
 
 ## Usage Examples
 
@@ -38,121 +45,148 @@ Ensure that the VMA library is installed on your system. This is typically avail
 
 ```rust
 use std::time::Duration;
-use vma_socket::udp::{VmaOptions, VmaUdpSocket};
+use vma_socket::udp::VmaUdpSocket;
+use vma_socket::common::VmaOptions;
 
-// Create a UDP socket with custom VMA options
-let vma_options = VmaOptions {
-    use_socketxtreme: true,
-    optimize_for_latency: true,
-    use_polling: true,
-    ring_count: 4,
-    buffer_size: 4096,
-    enable_timestamps: true,
-};
+// Create socket with low-latency optimizations
+let vma_options = VmaOptions::low_latency();
+let mut socket = VmaUdpSocket::with_options(vma_options)?;
 
-// Create and bind the socket
-let mut socket = VmaUdpSocket::with_options(vma_options).unwrap();
-socket.bind("127.0.0.1", 5001).unwrap();
+// For a server application
+socket.bind("0.0.0.0", 5001)?;
 
-// For a server (receiving)
-let mut buffer = vec![0u8; 4096];
-match socket.recv_from(&mut buffer, Some(Duration::from_millis(100))) {
-    Ok(Some(packet)) => {
-        println!("Received {} bytes from {}", packet.data.len(), packet.src_addr);
-    },
-    Ok(None) => println!("Timeout"),
-    Err(e) => println!("Error: {}", e),
+// For a client application
+socket.connect("192.168.1.100", 5001)?;
+socket.send("Hello VMA!".as_bytes())?;
+
+// Receive data with timeout
+let mut buffer = vec![0; 4096];
+match socket.recv_from(&mut buffer, Some(Duration::from_millis(100)))? {
+    Some(packet) => println!("Received {} bytes from {}", packet.data.len(), packet.src_addr),
+    None => println!("No packet received (timeout)"),
 }
-
-// For a client (sending)
-socket.connect("127.0.0.1", 5001).unwrap();
-let data = vec![1, 2, 3, 4];
-socket.send(&data).unwrap();
 ```
 
 ### TCP Example
 
 ```rust
 use std::time::Duration;
-use vma_socket::tcp::{VmaTcpSocket};
+use vma_socket::tcp::VmaTcpSocket;
 use vma_socket::common::VmaOptions;
 
-// Create a TCP socket with default VMA options
-let mut socket = VmaTcpSocket::new().unwrap();
+// Server example
+let mut server = VmaTcpSocket::with_options(VmaOptions::low_latency())?;
+server.bind("0.0.0.0", 5002)?;
+server.listen(10)?;
 
-// Server mode
-socket.bind("0.0.0.0", 5002).unwrap();
-socket.listen(10).unwrap();
-
-match socket.accept(Some(Duration::from_secs(1))) {
-    Ok(Some(client)) => {
-        println!("Connection from {}", client.address);
-        let mut buffer = vec![0u8; 1024];
-        match client.recv(&mut buffer, Some(Duration::from_millis(100))) {
-            Ok(len) => println!("Received {} bytes", len),
-            Err(e) => println!("Error: {}", e),
-        }
-    },
-    Ok(None) => println!("No connections within timeout"),
-    Err(e) => println!("Error: {}", e),
+if let Ok(Some(mut client)) = server.accept(Some(Duration::from_secs(1))) {
+    println!("Connection from {}", client.address);
+    
+    let mut buffer = vec![0u8; 1024];
+    let received = client.recv(&mut buffer, Some(Duration::from_millis(100)))?;
+    
+    if received > 0 {
+        client.send(&buffer[0..received])?;
+    }
 }
 
-// Client mode
-let mut socket = VmaTcpSocket::new().unwrap();
-match socket.connect("127.0.0.1", 5002, Some(Duration::from_secs(5))) {
-    Ok(true) => {
-        println!("Connected!");
-        socket.send(b"Hello VMA").unwrap();
-    },
-    Ok(false) => println!("Connection timeout"),
-    Err(e) => println!("Error: {}", e),
+// Client example
+let mut client = VmaTcpSocket::with_options(VmaOptions::low_latency())?;
+if client.connect("192.168.1.100", 5002, Some(Duration::from_secs(5)))? {
+    client.send("Hello VMA TCP!".as_bytes())?;
 }
-```
-
-## Running the Examples
-
-The repository includes example programs for both UDP and TCP in both Rust and C implementations. To run them:
-
-```bash
-# Ensure VMA is in your LD_PRELOAD path
-export LD_PRELOAD=/usr/lib64/libvma.so.x.x.xx
-
-# UDP test in server mode
-cargo run --example udp_test -- server 127.0.0.1 5001
-
-# UDP test in client mode
-cargo run --example udp_test -- client 127.0.0.1 5001
-
-# TCP test in server mode
-cargo run --example tcp_test -- server 127.0.0.1 5002
-
-# TCP test in client mode
-cargo run --example tcp_test -- client 127.0.0.1 5002
 ```
 
 ## Performance Tuning
 
-For optimal performance:
+For optimal performance, you may want to:
 
-1. Use `use_socketxtreme: true` for single-threaded applications
-2. Set `optimize_for_latency: true` for latency-sensitive applications
-3. Enable polling with `use_polling: true` for reduced latency at the cost of higher CPU usage
-4. Adjust `ring_count` based on your expected concurrency
-5. Set an appropriate `buffer_size` for your specific application needs
+1. Use the `VmaOptions::low_latency()` or `VmaOptions::high_throughput()` factory methods
+2. Enable `use_socketxtreme` for maximum performance (requires proper VMA configuration)
+3. Adjust buffer sizes to match your application's needs
+4. Set appropriate CPU affinity for your networking threads
+5. Experiment with polling vs interrupt-driven modes
 
-## Building from Source
+Example of custom options configuration:
+
+```rust
+let options = VmaOptions {
+    use_socketxtreme: true,
+    optimize_for_latency: true,
+    use_polling: true,
+    ring_count: 1, // Single ring for lower latency
+    buffer_size: 8192, // Smaller buffers
+    enable_timestamps: true,
+    use_hugepages: true,
+    tx_bufs: 32,
+    rx_bufs: 16,
+    disable_poll_yield: true,
+    skip_os_select: true,
+    keep_qp_full: true,
+    cpu_cores: std::ptr::null_mut(),
+    cpu_cores_count: 0,
+};
+```
+
+## Running with VMA
+
+There are two ways to run your application with VMA:
+
+### Using LD_PRELOAD manually
+
+To run your Rust application with VMA, use the `LD_PRELOAD` environment variable:
 
 ```bash
-git clone https://github.com/yourusername/vma_socket.git
-cd vma_socket
-cargo build --release
+LD_PRELOAD=/usr/lib64/libvma.so.x.x.x ./your_application
 ```
+
+### Using the provided run.sh script
+
+The library includes a convenience script `run.sh` that builds and runs the examples with VMA enabled:
+
+To run the UDP server and client examples, open two terminals:
+
+Terminal 1 (server):
+```bash
+# Start the UDP server
+./run.sh udp_test server
+```
+
+Terminal 2 (client):
+```bash
+# Run the UDP client connecting to the server
+./run.sh udp_test client
+```
+
+Similarly for TCP examples:
+
+Terminal 1 (server):
+```bash
+# Start the TCP server
+./run.sh tcp_test server
+```
+
+Terminal 2 (client):
+```bash
+# Run the TCP client connecting to the server
+./run.sh tcp_test client
+```
+
+You can also specify IP addresses and ports:
+```bash
+./run.sh tcp_test server 0.0.0.0 5002  # Server listening on all interfaces
+./run.sh tcp_test client 192.168.1.100 5002  # Client connecting to a specific IP
+```
+
+The script will:
+1. Build the specified example using cargo
+2. Run it with the VMA library pre-loaded
+3. Pass all additional arguments to the example program
 
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Acknowledgments
+## Contributing
 
-- Mellanox for the VMA library and RDMA technology
-- The Rust community for the excellent FFI support
+Contributions are welcome! Please feel free to submit a Pull Request.
