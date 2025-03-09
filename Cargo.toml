@@ -1,11 +1,12 @@
 [package]
 name = "vma-socket"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["Junbeom Lee <junbeoml22@gmail.com>"]
 description = "High-level Rust bindings for Mellanox/NVIDIA VMA (Messaging Accelerator) sockets"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/JunbeomL22/vma-socket"
+documentation = "https://docs.rs/vma-socket"
 keywords = ["network", "rdma", "vma", "low-latency", "mellanox"]
 categories = ["network-programming", "api-bindings"]
 

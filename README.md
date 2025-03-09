@@ -24,7 +24,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-vma-socket = "0.1.0"
+vma-socket = "0.1"
 ```
 
 ## Basic Usage
