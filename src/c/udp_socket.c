@@ -18,60 +18,16 @@
 #include <errno.h>
 #include <arpa/inet.h>  // Include for inet_pton
 #include "udp_socket.h"
+#include "vma_common.h"
 #include <mellanox/vma_extra.h>
 
-// Enhanced VMA environment setup function with performance optimizations
-static void setup_vma_env(const udp_vma_options_t* options) {
-    // Original settings
-    if (options->use_socketxtreme) {
-        setenv("VMA_SOCKETXTREME", "1", 1);
-    }
-    
-    if (options->optimize_for_latency) {
-        setenv("VMA_SPEC", "latency", 1);
-    }
-    
-    if (options->use_polling) {
-        setenv("VMA_RX_POLL", "1", 1);
-        setenv("VMA_SELECT_POLL", "1", 1);
-        
-        // Add: prevent CPU yielding during polling for lower latency
-        setenv("VMA_RX_POLL_YIELD", "0", 1);
-        
-        // Add: skip OS during select operations for better performance
-        setenv("VMA_SELECT_SKIP_OS", "1", 1);
-    }
-    
-    if (options->ring_count > 0) {
-        char ring_count[16];
-        snprintf(ring_count, sizeof(ring_count), "%d", options->ring_count);
-        setenv("VMA_RING_ALLOCATION_LOGIC_RX", ring_count, 1);
-    }
-    
-    // SocketXtreme optimization
-    if (options->use_socketxtreme) {
-        setenv("VMA_RING_ALLOCATION_LOGIC_TX", "0", 1);
-        setenv("VMA_THREAD_MODE", "1", 1);
-        
-        // Add: Keep queue pairs full for better throughput with SocketXtreme
-        setenv("VMA_CQ_KEEP_QP_FULL", "1", 1);
-    }
-    
-    // New optimizations
-    
-    // Use hugepages for better memory performance
-    setenv("VMA_MEMORY_ALLOCATION_TYPE", "2", 1);
-    
-    // Increase receive and transmit buffer counts 
-    setenv("VMA_RX_BUFS", "10000", 1);
-    setenv("VMA_TX_BUFS", "10000", 1);
-    
-    // Enable thread affinity for better CPU cache utilization
-    setenv("VMA_THREAD_AFFINITY", "1", 1);
+// Fix this function to use the pointer correctly
+static void setup_vma_env(const vma_options_t* udp_options) {
+    vma_setup_environment(udp_options);
 }
 
 // Enhanced UDP socket initialization with additional optimizations
-udp_result_t udp_socket_init(udp_socket_t* udp_socket, const udp_vma_options_t* options) {
+udp_result_t udp_socket_init(udp_socket_t* udp_socket, const vma_options_t* options) {
     if (!udp_socket) {
         return UDP_ERROR_INVALID_PARAM;
     }

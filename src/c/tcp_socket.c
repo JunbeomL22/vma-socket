@@ -22,6 +22,7 @@
 #include <errno.h>
 #include <arpa/inet.h>
 #include "tcp_socket.h"
+#include "vma_common.h"
 #include <mellanox/vma_extra.h>
 
 // Forward declarations of static functions
@@ -29,78 +30,6 @@ static bool would_block(void);
 static int wait_for_socket(int fd, bool for_read, int timeout_ms);
 static int set_nonblocking(int fd);
 static int set_blocking(int fd);
-static void setup_vma_env(const tcp_vma_options_t* options);
-static void set_default_options(tcp_vma_options_t* options);
-
-// Set VMA environment variables
-static void setup_vma_env(const tcp_vma_options_t* options) {
-    if (options->use_socketxtreme) {
-        setenv("VMA_SOCKETXTREME", "1", 1);
-    }
-    
-    if (options->optimize_for_latency) {
-        setenv("VMA_SPEC", "latency", 1);
-    }
-    
-    if (options->use_polling) {
-        setenv("VMA_RX_POLL", "1", 1);
-        setenv("VMA_SELECT_POLL", "1", 1);
-        
-        // Add: prevent CPU yielding during polling for lower latency
-        setenv("VMA_RX_POLL_YIELD", "0", 1);
-        
-        // Add: skip OS during select operations for better performance
-        setenv("VMA_SELECT_SKIP_OS", "1", 1);
-    }
-    
-    if (options->ring_count > 0) {
-        char ring_count[16];
-        snprintf(ring_count, sizeof(ring_count), "%d", options->ring_count);
-        setenv("VMA_RING_ALLOCATION_LOGIC_RX", ring_count, 1);
-    }
-    
-    // SocketXtreme optimization
-    if (options->use_socketxtreme) {
-        setenv("VMA_RING_ALLOCATION_LOGIC_TX", "0", 1);
-        setenv("VMA_THREAD_MODE", "1", 1);
-        
-        // Add: Keep queue pairs full for better throughput with SocketXtreme
-        setenv("VMA_CQ_KEEP_QP_FULL", "1", 1);
-    } else {
-        // Use multi-threaded mode when not using SocketXtreme
-        setenv("VMA_THREAD_MODE", "3", 1);
-    }
-    
-    // New optimizations
-    
-    // Use hugepages for better memory performance
-    setenv("VMA_MEMORY_ALLOCATION_TYPE", "2", 1);
-    
-    // Increase receive and transmit buffer counts
-    setenv("VMA_RX_BUFS", "10000", 1);
-    setenv("VMA_TX_BUFS", "10000", 1);
-    
-    // Enable thread affinity for better CPU cache utilization
-    setenv("VMA_THREAD_AFFINITY", "1", 1);
-    
-    // TCP-specific optimizations
-    
-    // Set TCP internal read buffer size to improve throughput
-    setenv("VMA_TCP_STREAM_RX_SIZE", "16777216", 1); // 16MB
-    
-    // Set RX ZERO COPY mode for TCP
-    setenv("VMA_TCP_RX_ZERO_COPY", "1", 1);
-}
-
-// Set default VMA options
-static void set_default_options(tcp_vma_options_t* options) {
-    options->use_socketxtreme = true;
-    options->optimize_for_latency = true;
-    options->use_polling = true;
-    options->ring_count = 4;
-    options->buffer_size = 65536;  // 64KB
-    options->enable_timestamps = true;
-}
 
 // Check if an operation would block
 static bool would_block(void) {
@@ -141,7 +70,7 @@ static int wait_for_socket(int fd, bool for_read, int timeout_ms) {
     }
 }
 
-tcp_result_t tcp_socket_init(tcp_socket_t* sock, const tcp_vma_options_t* options) {
+tcp_result_t tcp_socket_init(tcp_socket_t* sock, const vma_options_t* options) {
     if (!sock) {
         return TCP_ERROR_INVALID_PARAM;
     }
@@ -157,10 +86,7 @@ tcp_result_t tcp_socket_init(tcp_socket_t* sock, const tcp_vma_options_t* option
     } else {
         set_default_options(&sock->vma_options);
     }
-    
-    // Set VMA environment variables
-    setup_vma_env(&sock->vma_options);
-    
+
     // Create socket
     sock->socket_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock->socket_fd < 0) {

@@ -9,16 +9,7 @@
 #include <stdbool.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
-
-// VMA options structure (shared with UDP)
-typedef struct {
-    bool use_socketxtreme;       // Whether to use SocketXtreme mode
-    bool optimize_for_latency;   // Whether to optimize for latency
-    bool use_polling;            // Whether to use polling mode
-    int ring_count;              // Number of rings for load balancing
-    int buffer_size;             // Default buffer size
-    bool enable_timestamps;      // Whether to enable timestamps
-} tcp_vma_options_t;
+#include "vma_common.h"
 
 // TCP connection state
 typedef enum {
@@ -31,7 +22,7 @@ typedef enum {
 // TCP socket structure
 typedef struct {
     int socket_fd;                  // Socket file descriptor
-    tcp_vma_options_t vma_options;  // VMA options
+    vma_options_t vma_options;  // VMA options
     struct sockaddr_in local_addr;  // Local address information
     struct sockaddr_in remote_addr; // Remote address information
     bool is_bound;                  // Whether the socket is bound
@@ -78,7 +69,7 @@ typedef enum {
  * @param options VMA options (use default if NULL)
  * @return Result code
  */
-tcp_result_t tcp_socket_init(tcp_socket_t* socket, const tcp_vma_options_t* options);
+tcp_result_t tcp_socket_init(tcp_socket_t* socket, const vma_options_t* options);
 
 /**
  * Release and close a TCP socket

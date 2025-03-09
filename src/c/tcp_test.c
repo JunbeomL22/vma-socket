@@ -1,7 +1,7 @@
 /**
  * tcp_test.c - Example of using TCP Socket structure with VMA
  * 
- * Compile: gcc -o tcp_test tcp_test.c tcp_socket.c -pthread
+ * Compile: gcc -o tcp_test tcp_test.c tcp_socket.c vma_common.c -pthread
  * Run: LD_PRELOAD=/usr/lib64/libvma.so.9.8.51 ./tcp_test [server|client] [ip] [port]
  **/
 
@@ -16,6 +16,7 @@
 #include <sys/time.h>
 #include <arpa/inet.h>
 #include "tcp_socket.h"
+#include "vma_common.h"
 
 #define BUFFER_SIZE 4096
 #define TEST_DURATION 10  // Test duration (seconds)
@@ -92,7 +93,7 @@ void* client_handler_thread(void* arg) {
 void run_server(const char* ip, uint16_t port) {
     // Initialize TCP socket
     tcp_socket_t server;
-    tcp_vma_options_t options = {
+    vma_options_t options = {
         .use_socketxtreme = true,
         .optimize_for_latency = true,
         .use_polling = true,
@@ -195,7 +196,7 @@ void run_server(const char* ip, uint16_t port) {
 void run_client(const char* ip, uint16_t port) {
     // Initialize TCP socket
     tcp_socket_t client;
-    tcp_vma_options_t options = {
+    vma_options_t options = {
         .use_socketxtreme = true,
         .optimize_for_latency = true,
         .use_polling = true,

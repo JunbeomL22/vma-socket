@@ -1,7 +1,7 @@
 /**
  * udp_test.c - Example of using UDP Socket structure
  * 
- * Compile: gcc -o udp_test udp_test.c udp_socket.c -pthread
+ * Compile: gcc -o udp_test udp_test.c udp_socket.c vma_common.c -pthread
  * Run: LD_PRELOAD=/usr/lib64/libvma.so.9.8.51 ./udp_test
  */
 
@@ -14,8 +14,9 @@
 #include <stdbool.h>
 #include <signal.h>
 #include "udp_socket.h"
+#include "vma_common.h"
 
-#define BUFFER_SIZE 4096
+#define BUFFER_SIZE 8192
 #define TEST_DURATION 10  // Test duration (seconds)
 
 volatile int running = 1;
@@ -32,7 +33,7 @@ void signal_handler(int sig) {
 void* sender_thread(void* arg) {
     // Initialize UDP socket
     udp_socket_t sender;
-    udp_vma_options_t options = {
+    vma_options_t options = {
         .use_socketxtreme = true,
         .optimize_for_latency = true,
         .use_polling = true,
@@ -81,7 +82,7 @@ void* sender_thread(void* arg) {
 void* receiver_thread(void* arg) {
     // Initialize UDP socket
     udp_socket_t receiver;
-    udp_vma_options_t options = {
+    vma_options_t options = {
         .use_socketxtreme = true,
         .optimize_for_latency = true,
         .use_polling = true,
