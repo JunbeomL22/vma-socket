@@ -31,7 +31,6 @@
 //! ## Creating a UDP server
 //!
 //! ```rust,no_run
-//! use std::time::Duration;
 //! use vma_socket::udp::VmaUdpSocket;
 //! use vma_socket::common::VmaOptions;
 //!
@@ -46,7 +45,7 @@
 //! let mut buffer = vec![0u8; 4096];
 //!
 //! // Receive data with timeout
-//! match socket.recv_from(&mut buffer, Some(Duration::from_millis(100))).unwrap() {
+//! match socket.recv_from(&mut buffer, Some(100_000_000)) { // 100ms timeout
 //!     Some(packet) => {
 //!         println!("Received {} bytes from {}", packet.data.len(), packet.src_addr);
 //!         println!("Packet timestamp: {} ns", packet.timestamp);
@@ -95,8 +94,7 @@ use std::ffi::{c_void, CString};
 use std::mem;
 use std::net::SocketAddr;
 use std::os::raw::{c_char, c_int, c_ulonglong};
-use std::time::Duration;
-use crate::common::{SockAddrIn, VmaOptions, duration_to_ms, sockaddr_to_rust};
+use crate::common::{SockAddrIn, VmaOptions, unixnano_to_ms, sockaddr_to_rust};
 
 /// C representation of a UDP socket.
 #[repr(C)]
@@ -191,15 +189,16 @@ pub struct Packet {
 }
 
 /// Low-level wrapper around the C UDP socket implementation.
+/// Uses stack allocation instead of heap allocation for better performance.
 pub struct UdpSocketWrapper {
-    socket: Box<UdpSocket>,
+    socket: UdpSocket,
 }
 
 impl UdpSocketWrapper {
     /// Create a new UDP socket with the specified options.
     pub fn new(options: Option<VmaOptions>) -> Result<Self, UdpResult> {
         // Clear memory for new socket
-        let mut socket = Box::new(unsafe { mem::zeroed::<UdpSocket>() });
+        let mut socket = unsafe { mem::zeroed::<UdpSocket>() };
         
         // Get options - either use provided ones or defaults
         let c_options = options.unwrap_or_default();
@@ -209,7 +208,7 @@ impl UdpSocketWrapper {
             // Print for debugging
             println!("Initializing UDP socket with options: use_socketxtreme={}, optimize_for_latency={}, ring_count={}",
                 c_options.use_socketxtreme, c_options.optimize_for_latency, c_options.ring_count);
-            udp_socket_init(&mut *socket, &c_options)
+            udp_socket_init(&mut socket, &c_options)
         };
         
         if result != UdpResult::UdpSuccess as i32 {
@@ -223,7 +222,7 @@ impl UdpSocketWrapper {
     /// Bind the socket to a local address and port.
     pub fn bind<A: Into<String>>(&mut self, addr: A, port: u16) -> Result<(), UdpResult> {
         let c_addr = CString::new(addr.into()).unwrap();
-        let result = unsafe { udp_socket_bind(&mut *self.socket, c_addr.as_ptr(), port) };
+        let result = unsafe { udp_socket_bind(&mut self.socket, c_addr.as_ptr(), port) };
         
         if result != UdpResult::UdpSuccess as i32 {
             return Err(unsafe { mem::transmute::<i32, UdpResult>(result) });
@@ -235,7 +234,7 @@ impl UdpSocketWrapper {
     /// Connect the socket to a remote address and port.
     pub fn connect<A: Into<String>>(&mut self, addr: A, port: u16) -> Result<(), UdpResult> {
         let c_addr = CString::new(addr.into()).unwrap();
-        let result = unsafe { udp_socket_connect(&mut *self.socket, c_addr.as_ptr(), port) };
+        let result = unsafe { udp_socket_connect(&mut self.socket, c_addr.as_ptr(), port) };
         
         if result != UdpResult::UdpSuccess as i32 {
             return Err(unsafe { mem::transmute::<i32, UdpResult>(result) });
@@ -249,7 +248,7 @@ impl UdpSocketWrapper {
         let mut bytes_sent: usize = 0;
         let result = unsafe {
             udp_socket_send(
-                &mut *self.socket,
+                &mut self.socket,
                 data.as_ptr() as *const c_void,
                 data.len(),
                 &mut bytes_sent,
@@ -270,7 +269,7 @@ impl UdpSocketWrapper {
         
         let result = unsafe {
             udp_socket_sendto(
-                &mut *self.socket,
+                &mut self.socket,
                 data.as_ptr() as *const c_void,
                 data.len(),
                 c_addr.as_ptr(),
@@ -287,13 +286,13 @@ impl UdpSocketWrapper {
     }
 
     /// Receive data from the connected remote address.
-    pub fn recv(&mut self, buffer: &mut [u8], timeout: Option<Duration>) -> Result<usize, UdpResult> {
+    pub fn recv(&mut self, buffer: &mut [u8], timeout_nano: Option<u64>) -> Result<usize, UdpResult> {
         let mut bytes_received: usize = 0;
-        let timeout_ms = duration_to_ms(timeout);
+        let timeout_ms = unixnano_to_ms(timeout_nano);
         
         let result = unsafe {
             udp_socket_recv(
-                &mut *self.socket,
+                &mut self.socket,
                 buffer.as_mut_ptr() as *mut c_void,
                 buffer.len(),
                 timeout_ms,
@@ -309,13 +308,13 @@ impl UdpSocketWrapper {
     }
 
     /// Receive data and source address information.
-    pub fn recv_from(&mut self, buffer: &mut [u8], timeout: Option<Duration>) -> Result<Packet, UdpResult> {
+    pub fn recv_from(&mut self, buffer: &mut [u8], timeout_nano: Option<u64>) -> Result<Packet, UdpResult> {
         let mut packet = unsafe { mem::zeroed::<UdpPacket>() };
-        let timeout_ms = duration_to_ms(timeout);
+        let timeout_ms = unixnano_to_ms(timeout_nano);
         
         let result = unsafe {
             udp_socket_recvfrom(
-                &mut *self.socket,
+                &mut self.socket,
                 &mut packet,
                 buffer.as_mut_ptr() as *mut c_void,
                 buffer.len(),
@@ -349,7 +348,7 @@ impl UdpSocketWrapper {
         
         let result = unsafe {
             udp_socket_get_stats(
-                &mut *self.socket as *mut _,
+                &mut self.socket as *mut _,
                 &mut rx_packets,
                 &mut tx_packets,
                 &mut rx_bytes,
@@ -368,7 +367,7 @@ impl UdpSocketWrapper {
 impl Drop for UdpSocketWrapper {
     fn drop(&mut self) {
         unsafe {
-            udp_socket_close(&mut *self.socket);
+            udp_socket_close(&mut self.socket);
         }
     }
 }
@@ -422,8 +421,8 @@ impl VmaUdpSocket {
     }
 
     /// Receive data from the connected remote address.
-    pub fn recv(&mut self, buffer: &mut [u8], timeout: Option<Duration>) -> Result<usize, String> {
-        match self.inner.recv(buffer, timeout) {
+    pub fn recv(&mut self, buffer: &mut [u8], timeout_nano: Option<u64>) -> Result<usize, String> {
+        match self.inner.recv(buffer, timeout_nano) {
             Ok(bytes) => Ok(bytes),
             Err(UdpResult::UdpErrorTimeout) => Ok(0), // timeout is not an error
             Err(e) => Err(format!("Failed to receive: {:?}", e)),
@@ -431,8 +430,8 @@ impl VmaUdpSocket {
     }
 
     /// Receive data and source address information.
-    pub fn recv_from(&mut self, buffer: &mut [u8], timeout: Option<Duration>) -> Result<Option<Packet>, String> {
-        match self.inner.recv_from(buffer, timeout) {
+    pub fn recv_from(&mut self, buffer: &mut [u8], timeout_nano: Option<u64>) -> Result<Option<Packet>, String> {
+        match self.inner.recv_from(buffer, timeout_nano) {
             Ok(packet) => Ok(Some(packet)),
             Err(UdpResult::UdpErrorTimeout) => Ok(None), // timeout is not an error
             Err(e) => Err(format!("Failed to receive from: {:?}", e)),

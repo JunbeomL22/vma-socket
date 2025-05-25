@@ -1,7 +1,6 @@
 /**
  * vma_common.c - Common VMA functionality implementation
  */
-// #define _GNU_SOURCE  // Enable GNU extensions
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -78,8 +77,8 @@ void vma_setup_environment(const vma_options_t* options) {
         setenv("VMA_RX_BUFS", rx_bufs, 1);
     }
     
-    // CPU affinity settings
-    if (options->cpu_cores && options->cpu_cores_count > 0) {
+    // CPU affinity settings - now using fixed array instead of pointer
+    if (options->cpu_cores_count > 0) {
         setenv("VMA_THREAD_AFFINITY", "1", 1);
         
         // Create a string like "0,1,2,3"
@@ -127,4 +126,14 @@ void set_default_options(vma_options_t* options) {
     options->ring_count = 1;
     options->buffer_size = 4096;
     options->enable_timestamps = false;
+    options->use_hugepages = false;
+    options->tx_bufs = 1000;
+    options->rx_bufs = 1000;
+    options->disable_poll_yield = false;
+    options->skip_os_select = false;
+    options->keep_qp_full = false;
+    
+    // Initialize CPU cores array to zero
+    memset(options->cpu_cores, 0, sizeof(options->cpu_cores));
+    options->cpu_cores_count = 0;
 }

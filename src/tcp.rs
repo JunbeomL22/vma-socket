@@ -26,7 +26,6 @@
 //! ## UDP Example
 //!
 //! ```rust,no_run
-//! use std::time::Duration;
 //! use vma_socket::udp::VmaUdpSocket;
 //! use vma_socket::common::VmaOptions;
 //!
@@ -42,7 +41,7 @@
 //!     let mut buffer = vec![0u8; 4096];
 //!     
 //!     // Wait for incoming packets with timeout
-//!     match socket.recv_from(&mut buffer, Some(Duration::from_millis(100)))? {
+//!     match socket.recv_from(&mut buffer, Some(100_000_000))? {
 //!         Some(packet) => {
 //!             println!("Received {} bytes from {}", packet.data.len(), packet.src_addr);
 //!             
@@ -61,7 +60,6 @@
 //! ## TCP Example
 //!
 //! ```rust,no_run
-//! use std::time::Duration;
 //! use vma_socket::tcp::VmaTcpSocket;
 //! use vma_socket::common::VmaOptions;
 //!
@@ -74,12 +72,12 @@
 //!     socket.listen(10)?;
 //!     
 //!     // Accept clients with timeout
-//!     if let Some(mut client) = socket.accept(Some(Duration::from_secs(1)))? {
+//!     if let Some(mut client) = socket.accept(Some(1000_000_000))? {
 //!         println!("Connection from {}", client.address);
 //!         
 //!         // Receive data
 //!         let mut buffer = vec![0u8; 1024];
-//!         let received = client.recv(&mut buffer, Some(Duration::from_millis(100)))?;
+//!         let received = client.recv(&mut buffer, Some(100_000_000))?;
 //!         
 //!         // Echo back received data
 //!         if received > 0 {
@@ -105,13 +103,11 @@
 //! - [`tcp`]: High-performance TCP socket implementation
 //! - [`common`]: Shared types and utilities used by both implementations
 
-use crate::common::{SockAddrIn, VmaOptions, duration_to_ms, sockaddr_to_rust};
+use crate::common::{unixnano_to_ms, sockaddr_to_rust, SockAddrIn, VmaOptions};
 use std::ffi::{c_void, CString};
 use std::mem;
 use std::net::SocketAddr;
 use std::os::raw::{c_char, c_int, c_ulonglong};
-use std::time::Duration;
-
 
 // External declarations for C functions - using VmaOptions directly
 extern "C" {
@@ -215,7 +211,7 @@ pub enum TcpResult {
 /// This structure is created when a client connects to a listening socket,
 /// and provides methods for sending and receiving data to/from the client.
 pub struct Client {
-    inner: Box<TcpClient>,
+    inner: TcpClient,
     /// The client's remote address and port
     pub address: SocketAddr,
 }
@@ -227,7 +223,7 @@ impl Client {
     fn new(client: TcpClient) -> Self {
         let address = sockaddr_to_rust(&client.addr);
         Client {
-            inner: Box::new(client),
+            inner: client,
             address,
         }
     }
@@ -237,7 +233,7 @@ impl Client {
         let mut bytes_sent: usize = 0;
         let result = unsafe {
             tcp_socket_send_to_client(
-                &mut *self.inner,
+                &mut self.inner,
                 data.as_ptr() as *const c_void,
                 data.len(),
                 &mut bytes_sent,
@@ -252,13 +248,14 @@ impl Client {
     }
     
     /// Receive data from the client.
-    pub fn recv(&mut self, buffer: &mut [u8], timeout: Option<Duration>) -> Result<usize, TcpResult> {
+    pub fn recv(&mut self, buffer: &mut [u8], timeout_nano: Option<u64>) -> Result<usize, TcpResult> {
         let mut bytes_received: usize = 0;
-        let timeout_ms = duration_to_ms(timeout);
+        //let timeout_ms = duration_to_ms(timeout);
+        let timeout_ms = unixnano_to_ms(timeout_nano);
         
         let result = unsafe {
             tcp_socket_recv_from_client(
-                &mut *self.inner,
+                &mut self.inner,
                 buffer.as_mut_ptr() as *mut c_void,
                 buffer.len(),
                 timeout_ms,
@@ -277,7 +274,7 @@ impl Client {
     ///
     /// Note: The connection will be closed automatically when the Client is dropped.
     pub fn close(&mut self) -> Result<(), TcpResult> {
-        let result = unsafe { tcp_socket_close_client(&mut *self.inner) };
+        let result = unsafe { tcp_socket_close_client(&mut self.inner) };
         
         if result != TcpResult::TcpSuccess as i32 {
             return Err(unsafe { mem::transmute::<i32, TcpResult>(result) });
@@ -292,28 +289,29 @@ impl Drop for Client {
     fn drop(&mut self) {
         if self.inner.socket_fd >= 0 {
             unsafe {
-                tcp_socket_close_client(&mut *self.inner);
+                tcp_socket_close_client(&mut self.inner);
             }
         }
     }
 }
 
 /// Low-level wrapper around the C TCP socket implementation.
+/// Uses stack allocation instead of heap allocation for better performance.
 pub struct TcpSocketWrapper {
-    socket: Box<TcpSocket>,
+    socket: TcpSocket,
 }
 
 impl TcpSocketWrapper {
     /// Create a new TCP socket with the specified options.
     pub fn new(options: Option<VmaOptions>) -> Result<Self, TcpResult> {
-        let mut socket = Box::new(unsafe { mem::zeroed::<TcpSocket>() });
+        let mut socket = unsafe { mem::zeroed::<TcpSocket>() };
         
         let c_options = options.unwrap_or_default();
         
         let result = unsafe { 
             println!("Initializing TCP socket with options: use_socketxtreme={}, optimize_for_latency={}, ring_count={}",
                 c_options.use_socketxtreme, c_options.optimize_for_latency, c_options.ring_count);
-            tcp_socket_init(&mut *socket, &c_options)
+            tcp_socket_init(&mut socket, &c_options)
         };
         
         if result != TcpResult::TcpSuccess as i32 {
@@ -327,7 +325,7 @@ impl TcpSocketWrapper {
     /// Bind the socket to a local address and port.
     pub fn bind<A: Into<String>>(&mut self, addr: A, port: u16) -> Result<(), TcpResult> {
         let c_addr = CString::new(addr.into()).unwrap();
-        let result = unsafe { tcp_socket_bind(&mut *self.socket, c_addr.as_ptr(), port) };
+        let result = unsafe { tcp_socket_bind(&mut self.socket, c_addr.as_ptr(), port) };
         
         if result != TcpResult::TcpSuccess as i32 {
             return Err(unsafe { mem::transmute::<i32, TcpResult>(result) });
@@ -338,7 +336,7 @@ impl TcpSocketWrapper {
     
     /// Put the socket in listening mode (server).
     pub fn listen(&mut self, backlog: i32) -> Result<(), TcpResult> {
-        let result = unsafe { tcp_socket_listen(&mut *self.socket, backlog) };
+        let result = unsafe { tcp_socket_listen(&mut self.socket, backlog) };
         
         if result != TcpResult::TcpSuccess as i32 {
             return Err(unsafe { mem::transmute::<i32, TcpResult>(result) });
@@ -348,11 +346,11 @@ impl TcpSocketWrapper {
     }
     
     /// Accept a client connection (server).
-    pub fn accept(&mut self, timeout: Option<Duration>) -> Result<Client, TcpResult> {
+    pub fn accept(&mut self, timeout_nano: Option<u64>) -> Result<Client, TcpResult> {
         let mut client = unsafe { mem::zeroed::<TcpClient>() };
-        let timeout_ms = duration_to_ms(timeout);
+        let timeout_ms = unixnano_to_ms(timeout_nano);
         
-        let result = unsafe { tcp_socket_accept(&mut *self.socket, &mut client, timeout_ms) };
+        let result = unsafe { tcp_socket_accept(&mut self.socket, &mut client, timeout_ms) };
         
         if result != TcpResult::TcpSuccess as i32 {
             return Err(unsafe { mem::transmute::<i32, TcpResult>(result) });
@@ -362,11 +360,11 @@ impl TcpSocketWrapper {
     }
     
     /// Connect to a server (client).
-    pub fn connect<A: Into<String>>(&mut self, addr: A, port: u16, timeout: Option<Duration>) -> Result<(), TcpResult> {
+    pub fn connect<A: Into<String>>(&mut self, addr: A, port: u16, timeout_nano: Option<u64>) -> Result<(), TcpResult> {
         let c_addr = CString::new(addr.into()).unwrap();
-        let timeout_ms = duration_to_ms(timeout);
+        let timeout_ms = unixnano_to_ms(timeout_nano);
         
-        let result = unsafe { tcp_socket_connect(&mut *self.socket, c_addr.as_ptr(), port, timeout_ms) };
+        let result = unsafe { tcp_socket_connect(&mut self.socket, c_addr.as_ptr(), port, timeout_ms) };
         
         if result != TcpResult::TcpSuccess as i32 {
             return Err(unsafe { mem::transmute::<i32, TcpResult>(result) });
@@ -376,9 +374,9 @@ impl TcpSocketWrapper {
     }
     
     /// Attempt to reconnect after a disconnection.
-    pub fn reconnect(&mut self, timeout: Option<Duration>) -> Result<(), TcpResult> {
-        let timeout_ms = duration_to_ms(timeout);
-        let result = unsafe { tcp_socket_reconnect(&mut *self.socket, timeout_ms) };
+    pub fn reconnect(&mut self, timeout: Option<u64>) -> Result<(), TcpResult> {
+        let timeout_ms = unixnano_to_ms(timeout);
+        let result = unsafe { tcp_socket_reconnect(&mut self.socket, timeout_ms) };
         
         if result != TcpResult::TcpSuccess as i32 {
             return Err(unsafe { mem::transmute::<i32, TcpResult>(result) });
@@ -389,7 +387,7 @@ impl TcpSocketWrapper {
     
     /// Check if the socket is currently connected.
     pub fn is_connected(&mut self) -> bool {
-        unsafe { tcp_socket_is_connected(&mut *self.socket) }
+        unsafe { tcp_socket_is_connected(&mut self.socket) }
     }
     
     /// Send data over the connected socket.
@@ -397,7 +395,7 @@ impl TcpSocketWrapper {
         let mut bytes_sent: usize = 0;
         let result = unsafe {
             tcp_socket_send(
-                &mut *self.socket,
+                &mut self.socket,
                 data.as_ptr() as *const c_void,
                 data.len(),
                 &mut bytes_sent,
@@ -412,13 +410,13 @@ impl TcpSocketWrapper {
     }
     
     /// Receive data from the connected socket.
-    pub fn recv(&mut self, buffer: &mut [u8], timeout: Option<Duration>) -> Result<usize, TcpResult> {
+    pub fn recv(&mut self, buffer: &mut [u8], timeout_nano: Option<u64>) -> Result<usize, TcpResult> {
         let mut bytes_received: usize = 0;
-        let timeout_ms = duration_to_ms(timeout);
+        let timeout_ms = unixnano_to_ms(timeout_nano);
         
         let result = unsafe {
             tcp_socket_recv(
-                &mut *self.socket,
+                &mut self.socket,
                 buffer.as_mut_ptr() as *mut c_void,
                 buffer.len(),
                 timeout_ms,
@@ -442,7 +440,7 @@ impl TcpSocketWrapper {
         
         let result = unsafe {
             tcp_socket_get_stats(
-                &mut *self.socket as *mut _,
+                &mut self.socket as *mut _,
                 &mut rx_packets,
                 &mut tx_packets,
                 &mut rx_bytes,
@@ -462,7 +460,7 @@ impl Drop for TcpSocketWrapper {
     /// Automatically close the socket when it goes out of scope.
     fn drop(&mut self) {
         unsafe {
-            tcp_socket_close(&mut *self.socket);
+            tcp_socket_close(&mut self.socket);
         }
     }
 }
@@ -502,8 +500,8 @@ impl VmaTcpSocket {
     }
     
     /// Accept a client connection (server).
-    pub fn accept(&mut self, timeout: Option<Duration>) -> Result<Option<Client>, String> {
-        match self.inner.accept(timeout) {
+    pub fn accept(&mut self, timeout_nano: Option<u64>) -> Result<Option<Client>, String> {
+        match self.inner.accept(timeout_nano) {
             Ok(client) => Ok(Some(client)),
             Err(TcpResult::TcpErrorTimeout) => Ok(None), // timeout is not an error
             Err(e) => Err(format!("Failed to accept: {:?}", e)),
@@ -511,7 +509,7 @@ impl VmaTcpSocket {
     }
     
     /// Connect to a server (client).
-    pub fn connect<A: Into<String>>(&mut self, addr: A, port: u16, timeout: Option<Duration>) -> Result<bool, String> {
+    pub fn connect<A: Into<String>>(&mut self, addr: A, port: u16, timeout: Option<u64>) -> Result<bool, String> {
         match self.inner.connect(addr, port, timeout) {
             Ok(_) => Ok(true),
             Err(TcpResult::TcpErrorTimeout) => Ok(false), // timeout is not an error
@@ -520,7 +518,7 @@ impl VmaTcpSocket {
     }
     
     /// Attempt to reconnect after a disconnection.
-    pub fn try_reconnect(&mut self, timeout: Option<Duration>) -> Result<bool, String> {
+    pub fn try_reconnect(&mut self, timeout: Option<u64>) -> Result<bool, String> {
         match self.inner.reconnect(timeout) {
             Ok(_) => Ok(true),
             Err(TcpResult::TcpErrorTimeout) => Ok(false), // timeout is not an error
@@ -544,7 +542,7 @@ impl VmaTcpSocket {
     }
     
     /// Receive data from the connected socket.
-    pub fn recv(&mut self, buffer: &mut [u8], timeout: Option<Duration>) -> Result<usize, String> {
+    pub fn recv(&mut self, buffer: &mut [u8], timeout: Option<u64>) -> Result<usize, String> {
         match self.inner.recv(buffer, timeout) {
             Ok(bytes) => Ok(bytes),
             Err(TcpResult::TcpErrorTimeout) => Ok(0), // timeout is not an error

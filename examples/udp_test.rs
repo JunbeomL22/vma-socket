@@ -47,7 +47,9 @@ fn run_server(running: Arc<AtomicBool>, ip: &str, port: u16) {
     println!("Server mode (receiving): {}:{}", ip, port);
 
     // Set VMA options - using low latency profile
-    let vma_options = VmaOptions::low_latency();
+    let mut vma_options = VmaOptions::low_latency();
+
+    vma_options.add_core(0).expect("Failed to set CPU core");
 
     // Create UDP socket with detailed error handling
     let mut socket = match VmaUdpSocket::with_options(vma_options) {
@@ -57,6 +59,8 @@ fn run_server(running: Arc<AtomicBool>, ip: &str, port: u16) {
             return;
         }
     };
+
+
 
     // Bind to address
     if let Err(e) = socket.bind(ip, port) {
@@ -74,7 +78,7 @@ fn run_server(running: Arc<AtomicBool>, ip: &str, port: u16) {
 
     // Receiving loop
     while running.load(Ordering::SeqCst) && start_time.elapsed().as_secs() < TEST_DURATION {
-        match socket.recv_from(&mut buffer, Some(Duration::from_millis(100))) {
+        match socket.recv_from(&mut buffer, Some(100_000_000)) { // 100ms timeout
             Ok(Some(packet)) => {
                 packets_received += 1;
                 bytes_received += packet.data.len() as u64;
@@ -105,7 +109,8 @@ fn run_client(running: Arc<AtomicBool>, ip: &str, port: u16) {
     println!("Client mode (sending): {}:{}", ip, port);
 
     // Set VMA options - using low latency profile
-    let vma_options = VmaOptions::low_latency();
+    let mut vma_options = VmaOptions::low_latency();
+    vma_options.add_core(0).expect("Failed to set CPU core");
 
     // Create UDP socket with detailed error handling
     let mut socket = match VmaUdpSocket::with_options(vma_options) {

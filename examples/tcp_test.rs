@@ -47,7 +47,8 @@ fn run_server(running: Arc<AtomicBool>, ip: &str, port: u16) {
     println!("TCP Server mode (receiving): {}:{}", ip, port);
 
     // Set VMA options - using low latency profile
-    let vma_options = VmaOptions::low_latency();
+    let mut vma_options = VmaOptions::low_latency();
+    vma_options.add_core(0).expect("Failed to set CPU core");
 
     // Create TCP socket with detailed error handling
     let mut socket = match VmaTcpSocket::with_options(vma_options) {
@@ -82,7 +83,7 @@ fn run_server(running: Arc<AtomicBool>, ip: &str, port: u16) {
     while running.load(Ordering::SeqCst) && start_time.elapsed().as_secs() < TEST_DURATION {
         // Accept connection if none
         if client_opt.is_none() {
-            match socket.accept(Some(Duration::from_millis(100))) {
+            match socket.accept(Some(100_000_000)) { // 100ms timeout
                 Ok(Some(client)) => {
                     println!("Client connected from {}", client.address);
                     client_opt = Some(client);
@@ -99,7 +100,7 @@ fn run_server(running: Arc<AtomicBool>, ip: &str, port: u16) {
 
         // Read from client if connected
         if let Some(ref mut client) = client_opt {
-            match client.recv(&mut buffer, Some(Duration::from_millis(100))) {
+            match client.recv(&mut buffer, Some(100_000_000)) { // 100ms timeout
                 Ok(0) => {
                     // No data or connection closed
                     if start_time.elapsed().as_secs() % 2 == 0 {
@@ -130,7 +131,8 @@ fn run_client(running: Arc<AtomicBool>, ip: &str, port: u16) {
     println!("TCP Client mode (sending): {}:{}", ip, port);
 
     // Set VMA options - using low latency profile
-    let vma_options = VmaOptions::low_latency();
+    let mut vma_options = VmaOptions::low_latency();
+    vma_options.add_core(0).expect("Failed to set CPU core");
 
     // Create TCP socket with detailed error handling
     let mut socket = match VmaTcpSocket::with_options(vma_options) {
@@ -143,7 +145,7 @@ fn run_client(running: Arc<AtomicBool>, ip: &str, port: u16) {
 
     // Connect to server
     println!("Connecting to {}:{}...", ip, port);
-    match socket.connect(ip, port, Some(Duration::from_secs(5))) {
+    match socket.connect(ip, port, Some(5_000_000_000)) { // 5 seconds timeout
         Ok(true) => println!("Connected to server"),
         Ok(false) => {
             println!("Connection timeout");
@@ -182,7 +184,7 @@ fn run_client(running: Arc<AtomicBool>, ip: &str, port: u16) {
                 println!("Send error: {}", e);
                 // Try to reconnect
                 println!("Trying to reconnect...");
-                if let Ok(true) = socket.try_reconnect(Some(Duration::from_secs(1))) {
+                if let Ok(true) = socket.try_reconnect(Some(5_000_000_000)) { // 5 seconds timeout
                     println!("Reconnected");
                 } else {
                     println!("Reconnect failed");

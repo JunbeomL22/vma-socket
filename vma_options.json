@@ -1,0 +1,19 @@
+{
+  "use_socketxtreme": true,
+  "optimize_for_latency": true,
+  "use_polling": true,
+  "ring_count": 1,
+  "buffer_size": 8192,
+  "enable_timestamps": true,
+  "use_hugepages": true,
+  "tx_bufs": 32,
+  "rx_bufs": 16,
+  "disable_poll_yield": true,
+  "skip_os_select": true,
+  "keep_qp_full": true,
+  "cpu_cores": [
+    0,
+    1
+  ],
+  "cpu_cores_count": 2
+}

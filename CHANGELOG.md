@@ -8,3 +8,9 @@
 # 0.1.2
  - date: 2025-03-09
     - change: documentation: Cargo.toml documentation
+
+# 0.1.3
+ - date :2025-05-25
+   - change: Add serialization and deserialization for `VmaOptions`
+   - `cpu_cores: *mut c_int -> [c_int; MAX_CPU_CORES]`
+   - timeout input in recv and send: `Option<Duration> -> Option<u64>` (nanoseconds)

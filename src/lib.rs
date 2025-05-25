@@ -17,7 +17,6 @@
 //! ## UDP Example
 //!
 //! ```rust,no_run
-//! use std::time::Duration;
 //! use vma_socket::udp::VmaUdpSocket;
 //! 
 //! fn udp_example() -> Result<(), String> {
@@ -29,7 +28,7 @@
 //!     
 //!     // Receive data with timeout
 //!     let mut buffer = vec![0u8; 4096];
-//!     match socket.recv_from(&mut buffer, Some(Duration::from_millis(100)))? {
+//!     match socket.recv_from(&mut buffer, Some(100_000_000)) { // 100ms timeout
 //!         Some(packet) => {
 //!             println!("Received {} bytes", packet.data.len());
 //!             
@@ -48,7 +47,6 @@
 //! ## TCP Example
 //!
 //! ```rust,no_run
-//! use std::time::Duration;
 //! use vma_socket::tcp::VmaTcpSocket;
 //! 
 //! fn tcp_server_example() -> Result<(), String> {
@@ -60,10 +58,10 @@
 //!     socket.listen(10)?;
 //!     
 //!     // Accept client connections
-//!     if let Some(mut client) = socket.accept(Some(Duration::from_secs(1)))? {
+//!     if let Some(mut client) = socket.accept(Some(1_000_000_000))? {
 //!         // Receive and echo data
 //!         let mut buffer = vec![0u8; 1024];
-//!         let received = client.recv(&mut buffer, Some(Duration::from_millis(100)))?;
+//!         let received = client.recv(&mut buffer, Some(100_000_000))?; // 100ms timeout
 //!         if received > 0 {
 //!             client.send(&buffer[0..received])?;
 //!         }

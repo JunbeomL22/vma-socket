@@ -11,6 +11,9 @@
 #include <stdlib.h>  
 #include <stdio.h>
 
+// Maximum number of CPU cores that can be specified
+#define MAX_CPU_CORES 64
+
 // VMA options structure to be shared between TCP and UDP
 typedef struct {
     bool use_socketxtreme;       // Whether to use SocketXtreme mode
@@ -26,7 +29,7 @@ typedef struct {
     bool disable_poll_yield;     // Prevent CPU yielding during polling
     bool skip_os_select;         // Skip OS during select operations
     bool keep_qp_full;           // Keep queue pairs full for better throughput
-    int* cpu_cores;              // Array of CPU cores to use for affinity
+    int cpu_cores[MAX_CPU_CORES]; // Array of CPU cores to use for affinity (fixed size for thread safety)
     int cpu_cores_count;         // Number of CPU cores in the array
 } vma_options_t;
 
