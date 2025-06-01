@@ -137,6 +137,25 @@ pub enum UdpResult {
     UdpErrorClosed = -10,
 }
 
+use std::io::{Error, ErrorKind};
+impl From<UdpResult> for std::io::Error {
+    fn from(udp_result: UdpResult) -> Self {
+        match udp_result {
+            UdpResult::UdpSuccess => Error::new(ErrorKind::Other, "Unexpected success"),
+            UdpResult::UdpErrorSocketCreate => Error::new(ErrorKind::ConnectionRefused, "Socket creation failed"),
+            UdpResult::UdpErrorSocketOption => Error::new(ErrorKind::InvalidInput, "Socket option error"),
+            UdpResult::UdpErrorBind => Error::new(ErrorKind::AddrInUse, "Bind failed"),
+            UdpResult::UdpErrorConnect => Error::new(ErrorKind::ConnectionRefused, "Connect failed"),
+            UdpResult::UdpErrorSend => Error::new(ErrorKind::BrokenPipe, "Send failed"),
+            UdpResult::UdpErrorRecv => Error::new(ErrorKind::ConnectionReset, "Receive failed"),
+            UdpResult::UdpErrorTimeout => Error::new(ErrorKind::TimedOut, "Operation timed out"),
+            UdpResult::UdpErrorInvalidParam => Error::new(ErrorKind::InvalidInput, "Invalid parameter"),
+            UdpResult::UdpErrorNotInitialized => Error::new(ErrorKind::NotConnected, "Not initialized"),
+            UdpResult::UdpErrorClosed => Error::new(ErrorKind::ConnectionAborted, "Socket closed"),
+        }
+    }
+}
+
 // External declarations for C functions - using VmaOptions directly
 extern "C" {
     fn udp_socket_init(socket: *mut UdpSocket, options: *const VmaOptions) -> c_int;
@@ -376,72 +395,71 @@ impl Drop for UdpSocketWrapper {
 pub struct VmaUdpSocket {
     inner: UdpSocketWrapper,
 }
-
 impl VmaUdpSocket {
     /// Create a new UDP socket with default VMA options.
-    pub fn new() -> Result<Self, String> {
+    pub fn new() -> Result<Self, std::io::Error> {
         UdpSocketWrapper::new(None)
             .map(|inner| VmaUdpSocket { inner })
-            .map_err(|e| format!("Failed to create socket: {:?}", e))
+            .map_err(|e| e.into())
     }
 
     /// Create a new UDP socket with custom VMA options.
-    pub fn with_options(options: VmaOptions) -> Result<Self, String> {
+    pub fn with_options(options: VmaOptions) -> Result<Self, std::io::Error> {
         UdpSocketWrapper::new(Some(options))
             .map(|inner| VmaUdpSocket { inner })
-            .map_err(|e| format!("Failed to create socket with options: {:?}", e))
+            .map_err(|e| e.into())
     }
 
     /// Bind the socket to a local address and port.
-    pub fn bind<A: Into<String>>(&mut self, addr: A, port: u16) -> Result<(), String> {
+    pub fn bind<A: Into<String>>(&mut self, addr: A, port: u16) -> Result<(), std::io::Error> {
         self.inner
             .bind(addr, port)
-            .map_err(|e| format!("Failed to bind: {:?}", e))
+            .map_err(|e| e.into())
     }
 
     /// Connect the socket to a remote address and port.
-    pub fn connect<A: Into<String>>(&mut self, addr: A, port: u16) -> Result<(), String> {
+    pub fn connect<A: Into<String>>(&mut self, addr: A, port: u16) -> Result<(), std::io::Error> {
         self.inner
             .connect(addr, port)
-            .map_err(|e| format!("Failed to connect: {:?}", e))
+            .map_err(|e| e.into())
     }
 
     /// Send data to the connected remote address.
-    pub fn send(&mut self, data: &[u8]) -> Result<usize, String> {
+    pub fn send(&mut self, data: &[u8]) -> Result<usize, std::io::Error> {
         self.inner
             .send(data)
-            .map_err(|e| format!("Failed to send: {:?}", e))
+            .map_err(|e| e.into())
     }
 
     /// Send data to a specified address and port.
-    pub fn send_to<A: Into<String>>(&mut self, data: &[u8], addr: A, port: u16) -> Result<usize, String> {
+    pub fn send_to<A: Into<String>>(&mut self, data: &[u8], addr: A, port: u16) -> Result<usize, std::io::Error> {
         self.inner
             .send_to(data, addr, port)
-            .map_err(|e| format!("Failed to send to address: {:?}", e))
+            .map_err(|e| e.into())
     }
 
     /// Receive data from the connected remote address.
-    pub fn recv(&mut self, buffer: &mut [u8], timeout_nano: Option<u64>) -> Result<usize, String> {
+    pub fn recv(&mut self, buffer: &mut [u8], timeout_nano: Option<u64>) -> Result<usize, std::io::Error> {
         match self.inner.recv(buffer, timeout_nano) {
             Ok(bytes) => Ok(bytes),
             Err(UdpResult::UdpErrorTimeout) => Ok(0), // timeout is not an error
-            Err(e) => Err(format!("Failed to receive: {:?}", e)),
+            Err(e) => Err(e.into()),
         }
     }
 
     /// Receive data and source address information.
-    pub fn recv_from(&mut self, buffer: &mut [u8], timeout_nano: Option<u64>) -> Result<Option<Packet>, String> {
+    pub fn recv_from(&mut self, buffer: &mut [u8], timeout_nano: Option<u64>) -> Result<Option<Packet>, std::io::Error> {
         match self.inner.recv_from(buffer, timeout_nano) {
             Ok(packet) => Ok(Some(packet)),
             Err(UdpResult::UdpErrorTimeout) => Ok(None), // timeout is not an error
-            Err(e) => Err(format!("Failed to receive from: {:?}", e)),
+            Err(e) => Err(e.into()),
         }
     }
 
     /// Get socket statistics.
-    pub fn get_stats(&mut self) -> Result<(u64, u64, u64, u64), String> {
+    pub fn get_stats(&mut self) -> Result<(u64, u64, u64, u64), std::io::Error> {
         self.inner
             .get_stats()
-            .map_err(|e| format!("Failed to get stats: {:?}", e))
+            .map_err(|e| e.into())
     }
 }

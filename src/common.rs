@@ -3,8 +3,7 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::os::raw::c_int;
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
-use serde::ser::SerializeSeq;
-use serde::de::{self, Visitor, SeqAccess};
+use serde::de::{self, Visitor};
 
 /// Maximum number of CPU cores that can be specified
 const MAX_CPU_CORES: usize = 128;

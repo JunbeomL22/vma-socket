@@ -206,6 +206,31 @@ pub enum TcpResult {
     TcpErrorAlreadyConnected = -15,
 }
 
+use std::io::{Error, ErrorKind};
+
+impl From<TcpResult> for std::io::Error {
+    fn from(tcp_result: TcpResult) -> Self {
+        match tcp_result {
+            TcpResult::TcpSuccess => Error::new(ErrorKind::Other, "Unexpected success"),
+            TcpResult::TcpErrorSocketCreate => Error::new(ErrorKind::ConnectionRefused, "Socket creation failed"),
+            TcpResult::TcpErrorSocketOption => Error::new(ErrorKind::InvalidInput, "Socket option error"),
+            TcpResult::TcpErrorBind => Error::new(ErrorKind::AddrInUse, "Bind failed"),
+            TcpResult::TcpErrorListen => Error::new(ErrorKind::ConnectionRefused, "Listen failed"),
+            TcpResult::TcpErrorAccept => Error::new(ErrorKind::ConnectionRefused, "Accept failed"),
+            TcpResult::TcpErrorConnect => Error::new(ErrorKind::ConnectionRefused, "Connect failed"),
+            TcpResult::TcpErrorReconnect => Error::new(ErrorKind::ConnectionRefused, "Reconnect failed"),
+            TcpResult::TcpErrorSend => Error::new(ErrorKind::BrokenPipe, "Send failed"),
+            TcpResult::TcpErrorRecv => Error::new(ErrorKind::ConnectionReset, "Receive failed"),
+            TcpResult::TcpErrorTimeout => Error::new(ErrorKind::TimedOut, "Operation timed out"),
+            TcpResult::TcpErrorInvalidParam => Error::new(ErrorKind::InvalidInput, "Invalid parameter"),
+            TcpResult::TcpErrorNotInitialized => Error::new(ErrorKind::NotConnected, "Not initialized"),
+            TcpResult::TcpErrorClosed => Error::new(ErrorKind::ConnectionAborted, "Connection closed"),
+            TcpResult::TcpErrorWouldBlock => Error::new(ErrorKind::WouldBlock, "Would block"),
+            TcpResult::TcpErrorAlreadyConnected => Error::new(ErrorKind::AlreadyExists, "Already connected"),
+        }
+    }
+}
+
 /// Represents a connected client in a server context.
 ///
 /// This structure is created when a client connects to a listening socket,
@@ -472,58 +497,58 @@ pub struct VmaTcpSocket {
 
 impl VmaTcpSocket {
     /// Create a new TCP socket with default VMA options.
-    pub fn new() -> Result<Self, String> {
+    pub fn new() -> Result<Self, std::io::Error> {
         TcpSocketWrapper::new(None)
             .map(|inner| VmaTcpSocket { inner })
-            .map_err(|e| format!("Failed to create TCP socket: {:?}", e))
+            .map_err(|e| e.into())
     }
     
     /// Create a new TCP socket with custom VMA options.
-    pub fn with_options(options: VmaOptions) -> Result<Self, String> {
+    pub fn with_options(options: VmaOptions) -> Result<Self, std::io::Error> {
         TcpSocketWrapper::new(Some(options))
             .map(|inner| VmaTcpSocket { inner })
-            .map_err(|e| format!("Failed to create TCP socket with options: {:?}", e))
+            .map_err(|e| e.into())
     }
     
     /// Bind the socket to a local address and port.
-    pub fn bind<A: Into<String>>(&mut self, addr: A, port: u16) -> Result<(), String> {
+    pub fn bind<A: Into<String>>(&mut self, addr: A, port: u16) -> Result<(), std::io::Error> {
         self.inner
             .bind(addr, port)
-            .map_err(|e| format!("Failed to bind: {:?}", e))
+            .map_err(|e| e.into())
     }
     
     /// Put the socket in listening mode (server).
-    pub fn listen(&mut self, backlog: i32) -> Result<(), String> {
+    pub fn listen(&mut self, backlog: i32) -> Result<(), std::io::Error> {
         self.inner
             .listen(backlog)
-            .map_err(|e| format!("Failed to listen: {:?}", e))
+            .map_err(|e| e.into())
     }
     
     /// Accept a client connection (server).
-    pub fn accept(&mut self, timeout_nano: Option<u64>) -> Result<Option<Client>, String> {
+    pub fn accept(&mut self, timeout_nano: Option<u64>) -> Result<Option<Client>, std::io::Error> {
         match self.inner.accept(timeout_nano) {
             Ok(client) => Ok(Some(client)),
             Err(TcpResult::TcpErrorTimeout) => Ok(None), // timeout is not an error
-            Err(e) => Err(format!("Failed to accept: {:?}", e)),
+            Err(e) => Err(e.into()),
         }
     }
     
     /// Connect to a server (client).
-    pub fn connect<A: Into<String>>(&mut self, addr: A, port: u16, timeout: Option<u64>) -> Result<bool, String> {
+    pub fn connect<A: Into<String>>(&mut self, addr: A, port: u16, timeout: Option<u64>) -> Result<bool, std::io::Error> {
         match self.inner.connect(addr, port, timeout) {
             Ok(_) => Ok(true),
             Err(TcpResult::TcpErrorTimeout) => Ok(false), // timeout is not an error
-            Err(e) => Err(format!("Failed to connect: {:?}", e)),
+            Err(e) => Err(e.into()),
         }
     }
     
     /// Attempt to reconnect after a disconnection.
-    pub fn try_reconnect(&mut self, timeout: Option<u64>) -> Result<bool, String> {
+    pub fn try_reconnect(&mut self, timeout: Option<u64>) -> Result<bool, std::io::Error> {
         match self.inner.reconnect(timeout) {
             Ok(_) => Ok(true),
             Err(TcpResult::TcpErrorTimeout) => Ok(false), // timeout is not an error
             Err(TcpResult::TcpErrorReconnect) => Ok(false), // reconnect failure is treated as a false result
-            Err(e) => Err(format!("Failed to reconnect: {:?}", e)),
+            Err(e) => Err(e.into()),
         }
     }
     
@@ -533,28 +558,27 @@ impl VmaTcpSocket {
     }
     
     /// Send data over the connected socket.
-    pub fn send(&mut self, data: &[u8]) -> Result<usize, String> {
+    pub fn send(&mut self, data: &[u8]) -> Result<usize, std::io::Error> {
         match self.inner.send(data) {
             Ok(bytes) => Ok(bytes),
             Err(TcpResult::TcpErrorWouldBlock) => Ok(0), // would block is not an error
-            Err(e) => Err(format!("Failed to send: {:?}", e)),
+            Err(e) => Err(e.into()),
         }
     }
     
     /// Receive data from the connected socket.
-    pub fn recv(&mut self, buffer: &mut [u8], timeout: Option<u64>) -> Result<usize, String> {
+    pub fn recv(&mut self, buffer: &mut [u8], timeout: Option<u64>) -> Result<usize, std::io::Error> {
         match self.inner.recv(buffer, timeout) {
             Ok(bytes) => Ok(bytes),
             Err(TcpResult::TcpErrorTimeout) => Ok(0), // timeout is not an error
             Err(TcpResult::TcpErrorClosed) => Ok(0), // treat closed as EOF (0 bytes received)
-            Err(e) => Err(format!("Failed to receive: {:?}", e)),
+            Err(e) => Err(e.into()),
         }
     }
     
     /// Get socket statistics.
-    pub fn get_stats(&mut self) -> Result<(u64, u64, u64, u64), String> {
-        self.inner
-            .get_stats()
-            .map_err(|e| format!("Failed to get stats: {:?}", e))
+    pub fn get_stats(&mut self) -> Result<(u64, u64, u64, u64), std::io::Error> {
+        self.inner.get_stats()
+            .map_err(|e| e.into())
     }
 }
