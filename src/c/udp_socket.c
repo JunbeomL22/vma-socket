@@ -225,15 +225,16 @@ udp_result_t udp_socket_recv(udp_socket_t* socket, void* buffer, size_t buffer_s
         return UDP_ERROR_INVALID_PARAM;
     }
     
-    // Handle timeout
-    if (timeout_ms != 0) {
+    // Handle timeout based on socket mode
+    if (!socket->vma_options.use_polling && timeout_ms != -1) {
+        // For non-polling mode with timeout, use select
         fd_set readfds;
         struct timeval tv;
         
         FD_ZERO(&readfds);
         FD_SET(socket->socket_fd, &readfds);
         
-        if (timeout_ms > 0) {
+        if (timeout_ms >= 0) {
             tv.tv_sec = timeout_ms / 1000;
             tv.tv_usec = (timeout_ms % 1000) * 1000;
         }
@@ -253,6 +254,7 @@ udp_result_t udp_socket_recv(udp_socket_t* socket, void* buffer, size_t buffer_s
     
     if (res < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            // For polling mode or immediate timeout
             return UDP_ERROR_TIMEOUT;
         }
         return UDP_ERROR_RECV;
@@ -276,15 +278,16 @@ udp_result_t udp_socket_recvfrom(udp_socket_t* socket, udp_packet_t* packet,
         return UDP_ERROR_INVALID_PARAM;
     }
     
-    // Handle timeout
-    if (timeout_ms != 0) {
+    // Handle timeout based on socket mode
+    if (!socket->vma_options.use_polling && timeout_ms != -1) {
+        // For non-polling mode with timeout, use select
         fd_set readfds;
         struct timeval tv;
         
         FD_ZERO(&readfds);
         FD_SET(socket->socket_fd, &readfds);
         
-        if (timeout_ms > 0) {
+        if (timeout_ms >= 0) {
             tv.tv_sec = timeout_ms / 1000;
             tv.tv_usec = (timeout_ms % 1000) * 1000;
         }
@@ -306,6 +309,7 @@ udp_result_t udp_socket_recvfrom(udp_socket_t* socket, udp_packet_t* packet,
     
     if (res < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            // For polling mode or immediate timeout
             return UDP_ERROR_TIMEOUT;
         }
         return UDP_ERROR_RECV;

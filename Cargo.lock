@@ -580,6 +580,7 @@ name = "vma-socket"
 version = "0.1.5"
 dependencies = [
  "cc",
+ "core_affinity",
  "ctrlc",
  "flashlog",
  "libc",
