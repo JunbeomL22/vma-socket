@@ -98,6 +98,7 @@ use crate::common::{SockAddrIn, VmaOptions, unixnano_to_ms, sockaddr_to_rust};
 
 /// C representation of a UDP socket.
 #[repr(C)]
+#[derive(Debug, Clone)]
 pub struct UdpSocket {
     pub socket_fd: c_int,
     pub vma_options: VmaOptions,
@@ -113,6 +114,7 @@ pub struct UdpSocket {
 
 /// C representation of a UDP packet.
 #[repr(C)]
+#[derive(Debug, Clone)]
 pub struct UdpPacket {
     pub data: *mut c_void,
     pub length: usize,
@@ -196,6 +198,7 @@ extern "C" {
 
 /// A received UDP packet with associated metadata.
 #[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Packet {
     /// The packet payload data.
     pub data: Vec<u8>,
@@ -209,6 +212,7 @@ pub struct Packet {
 
 /// Low-level wrapper around the C UDP socket implementation.
 /// Uses stack allocation instead of heap allocation for better performance.
+#[derive(Debug, Clone)]
 pub struct UdpSocketWrapper {
     socket: UdpSocket,
 }
@@ -391,7 +395,7 @@ impl Drop for UdpSocketWrapper {
     }
 }
 
-// High-level Rust-friendly API for UDP sockets
+#[derive(Debug, Clone)]
 pub struct VmaUdpSocket {
     inner: UdpSocketWrapper,
 }

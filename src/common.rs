@@ -10,7 +10,7 @@ const MAX_CPU_CORES: usize = 128;
 
 /// C-compatible VMA options structure that directly matches the C definition.
 /// This version is thread-safe by using a fixed-size array instead of raw pointers.
-#[repr(C)]
+#[repr(C)] 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VmaOptions {
     /// Use SocketXtreme for optimized performance
@@ -291,6 +291,7 @@ impl VmaOptions {
 
 /// Internal representation of socket address in C format.
 #[repr(C)]
+#[derive(Debug, Clone)]
 pub struct SockAddrIn {
     pub sin_family: u16,
     pub sin_port: u16,

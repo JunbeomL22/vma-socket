@@ -161,6 +161,7 @@ pub enum TcpConnectionState {
 
 /// C representation of a TCP socket.
 #[repr(C)]
+#[derive(Debug, Clone)]
 pub struct TcpSocket {
     pub socket_fd: c_int,
     pub vma_options: VmaOptions,
@@ -177,6 +178,7 @@ pub struct TcpSocket {
 
 /// C representation of a TCP client connection.
 #[repr(C)]
+#[derive(Debug, Clone)]
 pub struct TcpClient {
     pub socket_fd: c_int,
     pub addr: SockAddrIn,
@@ -186,7 +188,7 @@ pub struct TcpClient {
 
 /// Result codes returned by the C TCP socket functions.
 #[repr(C)]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TcpResult {
     TcpSuccess = 0,
     TcpErrorSocketCreate = -1,
@@ -235,6 +237,7 @@ impl From<TcpResult> for std::io::Error {
 ///
 /// This structure is created when a client connects to a listening socket,
 /// and provides methods for sending and receiving data to/from the client.
+#[derive(Debug, Clone)]
 pub struct Client {
     inner: TcpClient,
     /// The client's remote address and port
@@ -322,6 +325,7 @@ impl Drop for Client {
 
 /// Low-level wrapper around the C TCP socket implementation.
 /// Uses stack allocation instead of heap allocation for better performance.
+#[derive(Debug, Clone)]
 pub struct TcpSocketWrapper {
     socket: TcpSocket,
 }
