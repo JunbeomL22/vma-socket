@@ -15,6 +15,8 @@ fn main() {
     // Basic build configuration
     let mut common_build = cc::Build::new();
     common_build
+        .include("/usr/include")
+        .include("/usr/include/mellanox")
         .include(c_src_path)
         .flag("-fPIC")
         .flag("-D_GNU_SOURCE");
