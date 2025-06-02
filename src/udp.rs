@@ -197,7 +197,6 @@ extern "C" {
 }
 
 /// A received UDP packet with associated metadata.
-#[derive(Debug)]
 #[derive(Clone, Debug)]
 pub struct Packet {
     /// The packet payload data.

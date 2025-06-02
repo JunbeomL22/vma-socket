@@ -1,5 +1,8 @@
 use std::env;
 use std::process;
+use std::thread;
+use std::time::{Duration, Instant};
+use std::sync::mpsc;
 use vma_socket::udp::VmaUdpSocket;
 use vma_socket::tcp::VmaTcpSocket;
 use vma_socket::common::VmaOptions;
@@ -18,7 +21,7 @@ fn main() {
 
     match protocol.as_str() {
         "udp" => benchmark_udp_empty_recv(),
-        "tcp" => benchmark_tcp_send_recv(),
+        "tcp" => benchmark_tcp_recv(),
         _ => {
             println!("Unknown protocol: {}", protocol);
             println!("Use 'udp' or 'tcp'");
@@ -75,11 +78,10 @@ fn benchmark_udp_with_options(config_name: &str, mut options: VmaOptions) {
     
     // recv 벤치마크 (빈 소켓 폴링)
     for i in 0..ITERATIONS {
-        let start_nano = flashlog::get_unix_nano();
+        let start = Instant::now();
         let _ = socket.recv_from(&mut buffer, Some(0)); // 0 = 즉시 리턴
-        let end_nano = flashlog::get_unix_nano();
-        let duration_nano = end_nano - start_nano;
-        recv_times.push(duration_nano);
+        let duration = start.elapsed();
+        recv_times.push(duration.as_nanos() as u64);
 
         if (i + 1) % 10000 == 0 {
             println!("  Completed {}/{} recv iterations", i + 1, ITERATIONS);
@@ -91,11 +93,10 @@ fn benchmark_udp_with_options(config_name: &str, mut options: VmaOptions) {
     // send 벤치마크 (루프백으로 전송)
     let test_data = b"test";
     for i in 0..ITERATIONS {
-        let start_nano = flashlog::get_unix_nano();
+        let start = Instant::now();
         let _ = socket.send_to(test_data, "127.0.0.1", 12345); // 아무 포트로 전송
-        let end_nano = flashlog::get_unix_nano();
-        let duration_nano = end_nano - start_nano;
-        send_times.push(duration_nano);
+        let duration = start.elapsed();
+        send_times.push(duration.as_nanos() as u64);
 
         if (i + 1) % 10000 == 0 {
             println!("  Completed {}/{} send iterations", i + 1, ITERATIONS);
@@ -106,8 +107,8 @@ fn benchmark_udp_with_options(config_name: &str, mut options: VmaOptions) {
     print_timing_stats(&format!("UDP Send ({})", config_name), &send_times);
 }
 
-fn benchmark_tcp_empty_recv() {
-    println!("=== TCP Empty Socket Polling Benchmark ===");
+fn benchmark_tcp_recv() {
+    println!("=== TCP Recv Benchmark ===");
     
     // 두 가지 설정으로 테스트
     benchmark_tcp_with_options("Low Latency (Polling)", VmaOptions::low_latency());
@@ -125,61 +126,94 @@ fn benchmark_tcp_with_options(config_name: &str, mut options: VmaOptions) {
     // CPU 코어 설정
     options.add_core(0).expect("Failed to set CPU core");
     
-    // 소켓 생성
-    let mut socket = match VmaTcpSocket::with_options(options) {
+    // 채널을 사용해서 서버와 클라이언트 동기화
+    let (tx, rx) = mpsc::channel();
+    let options_clone = options.clone();
+    
+    // 서버 스레드 시작
+    let server_handle = thread::spawn(move || {
+        run_tcp_server(config_name, options_clone, tx);
+    });
+    
+    // 서버가 준비될 때까지 대기
+    let server_port = rx.recv().expect("Failed to receive server port");
+    
+    // 클라이언트 실행
+    run_tcp_client(config_name, options, server_port);
+    
+    // 서버 스레드 종료 대기
+    server_handle.join().expect("Server thread panicked");
+}
+
+fn run_tcp_server(config_name: &str, mut options: VmaOptions, tx: mpsc::Sender<u16>) {
+    // 서버 소켓 생성
+    let mut server_socket = match VmaTcpSocket::with_options(options) {
         Ok(s) => s,
         Err(e) => {
-            println!("Failed to create TCP socket: {}", e);
+            println!("Failed to create TCP server socket: {}", e);
             return;
         }
     };
 
     // 포트에 바인드
-    if let Err(e) = socket.bind("127.0.0.1", 0) { // 0 = 자동 포트 할당
-        println!("Failed to bind TCP socket: {}", e);
+    if let Err(e) = server_socket.bind("127.0.0.1", 0) { // 0 = 자동 포트 할당
+        println!("Failed to bind TCP server socket: {}", e);
         return;
     }
 
     // 리스닝 시작
-    if let Err(e) = socket.listen(1) {
-        println!("Failed to listen on TCP socket: {}", e);
+    if let Err(e) = server_socket.listen(1) {
+        println!("Failed to listen on TCP server socket: {}", e);
         return;
     }
 
-    let mut buffer = vec![0u8; BUFFER_SIZE];
-    let mut accept_times = Vec::with_capacity(ITERATIONS);
-    let mut recv_times = Vec::with_capacity(ITERATIONS);
+    // 사용된 포트 번호를 클라이언트에게 전달 (실제로는 getsockname으로 가져와야 하지만 여기서는 고정 포트 사용)
+    tx.send(8080).expect("Failed to send server port");
 
-    println!("Warming up...");
-    // 워밍업
-    for _ in 0..1000 {
-        let _ = socket.accept(Some(0)); // 0 = 논블로킹
-    }
-
-    println!("Starting TCP accept benchmark ({} iterations)...", ITERATIONS);
+    println!("TCP Server waiting for connection...");
     
-    // accept 벤치마크 (빈 소켓 폴링)
-    for i in 0..ITERATIONS {
-        let start = Instant::now();
-        let _ = socket.accept(Some(0)); // 0 = 즉시 리턴
-        let duration = start.elapsed();
-        accept_times.push(duration);
+    // 클라이언트 연결 대기
+    match server_socket.accept(Some(5_000_000_000)) { // 5초 타임아웃
+        Ok(Some(mut client)) => {
+            println!("Client connected from {}", client.address);
+            
+            let mut buffer = vec![0u8; BUFFER_SIZE];
+            let mut recv_times = Vec::with_capacity(ITERATIONS);
 
-        if (i + 1) % 10000 == 0 {
-            println!("  Completed {}/{} accept iterations", i + 1, ITERATIONS);
+            println!("Warming up TCP recv...");
+            // 워밍업
+            for _ in 0..1000 {
+                let _ = client.recv(&mut buffer, Some(0)); // 0 = 논블로킹
+            }
+
+            println!("Starting TCP recv benchmark ({} iterations)...", ITERATIONS);
+            
+            // recv 벤치마크 (빈 소켓 폴링)
+            for i in 0..ITERATIONS {
+                let start = Instant::now();
+                let _ = client.recv(&mut buffer, Some(0)); // 0 = 즉시 리턴
+                let duration = start.elapsed();
+                recv_times.push(duration.as_nanos() as u64);
+
+                if (i + 1) % 10000 == 0 {
+                    println!("  Completed {}/{} recv iterations", i + 1, ITERATIONS);
+                }
+            }
+
+            print_timing_stats(&format!("TCP Recv ({})", config_name), &recv_times);
+        },
+        Ok(None) => {
+            println!("No client connection within timeout");
+        },
+        Err(e) => {
+            println!("Failed to accept client: {}", e);
         }
     }
-
-    // 연결된 소켓이 없으므로 recv는 테스트하지 않음 (의미가 없음)
-    
-    print_timing_stats(&format!("TCP Accept ({})", config_name), &accept_times);
-    
-    // TCP는 연결이 필요하므로 별도의 연결 테스트도 해보자
-    benchmark_tcp_connect_timing(config_name, options);
 }
 
-fn benchmark_tcp_connect_timing(config_name: &str, mut options: VmaOptions) {
-    println!("Starting TCP connect timing test...");
+fn run_tcp_client(config_name: &str, mut options: VmaOptions, server_port: u16) {
+    // 잠깐 대기해서 서버가 listen 상태가 되도록 함
+    thread::sleep(Duration::from_millis(100));
     
     // 클라이언트 소켓 생성
     let mut client_socket = match VmaTcpSocket::with_options(options) {
@@ -190,22 +224,45 @@ fn benchmark_tcp_connect_timing(config_name: &str, mut options: VmaOptions) {
         }
     };
 
-    let mut connect_times = Vec::with_capacity(1000);
+    println!("TCP Client connecting to server...");
     
-    // 존재하지 않는 포트로 연결 시도 (즉시 실패)
-    for i in 0..1000 {
-        let start_nano = flashlog::get_unix_nano();
-        let _ = client_socket.connect("127.0.0.1", 12345, Some(0)); // 0 = 즉시 리턴
-        let end_nano = flashlog::get_unix_nano();
-        let duration_nano = end_nano - start_nano;
-        connect_times.push(duration_nano);
+    // 서버에 연결
+    match client_socket.connect("127.0.0.1", server_port, Some(5_000_000_000)) { // 5초 타임아웃
+        Ok(true) => {
+            println!("Connected to server");
+            
+            // 연결 유지를 위해 잠시 대기
+            thread::sleep(Duration::from_secs(2));
+            
+            // send 벤치마크도 같이 수행
+            let test_data = b"test";
+            let mut send_times = Vec::with_capacity(1000);
 
-        if (i + 1) % 100 == 0 {
-            println!("  Completed {}/{} connect attempts", i + 1, 1000);
+            println!("Starting TCP send benchmark (1000 iterations)...");
+            
+            for i in 0..1000 {
+                let start = Instant::now();
+                let _ = client_socket.send(test_data);
+                let duration = start.elapsed();
+                send_times.push(duration.as_nanos() as u64);
+
+                if (i + 1) % 100 == 0 {
+                    println!("  Completed {}/{} send iterations", i + 1, 1000);
+                }
+                
+                // 너무 빠르게 보내지 않도록 약간의 지연
+                thread::sleep(Duration::from_micros(10));
+            }
+
+            print_timing_stats(&format!("TCP Send ({})", config_name), &send_times);
+        },
+        Ok(false) => {
+            println!("Connection timeout");
+        },
+        Err(e) => {
+            println!("Failed to connect: {}", e);
         }
     }
-
-    print_timing_stats(&format!("TCP Connect Attempt ({})", config_name), &connect_times);
 }
 
 fn print_timing_stats(operation: &str, times: &[u64]) {
