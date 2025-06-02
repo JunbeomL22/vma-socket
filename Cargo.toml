@@ -1,6 +1,6 @@
 [package]
 name = "vma-socket"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 authors = ["Junbeom Lee <junbeoml22@gmail.com>"]
 description = "High-level Rust bindings for Mellanox/NVIDIA VMA (Messaging Accelerator) sockets"

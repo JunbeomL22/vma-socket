@@ -16,5 +16,9 @@
    - timeout input in recv and send: `Option<Duration> -> Option<u64>` (nanoseconds)
 
 # 0.1.4
- - date :2025-06-01
+ - date : 2025-06-01
    - change Error type from `String` to `std::io::Error`
+
+# 0.1.5
+ - date : under dev
+   - added benchmark
