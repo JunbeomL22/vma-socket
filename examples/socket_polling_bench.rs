@@ -1,9 +1,6 @@
 use std::env;
 use std::process;
 use std::thread;
-use std::time::Duration;
-use std::sync::mpsc;
-use libc::option;
 use vma_socket::udp::VmaUdpSocket;
 use vma_socket::tcp::VmaTcpSocket;
 use vma_socket::common::VmaOptions;
