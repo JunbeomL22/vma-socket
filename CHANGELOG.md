@@ -22,3 +22,6 @@
 # 0.1.5
  - date : under dev
    - added benchmark
+   - implemented `Debug` and `Clone`
+   - build include `/usr/include` and `/usr/include/mellanox`
+   - `run.sh` header changed to `#!/usr/bin/bash`

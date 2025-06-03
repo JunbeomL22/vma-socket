@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/bash
 # run.sh - Helper script to build and run VMA-enabled applications
 
 # First, build without LD_PRELOAD
