@@ -26,3 +26,8 @@ cc = "1.2"
 [lib]
 name = "vma_socket"
 path = "src/lib.rs"
+
+[workspace]
+members = [
+    "benches/std-async",
+]

@@ -495,6 +495,7 @@ impl Drop for TcpSocketWrapper {
 }
 
 /// High-level Rust-friendly TCP socket implementation.
+#[derive(Debug, Clone)]
 pub struct VmaTcpSocket {
     inner: TcpSocketWrapper,
 }

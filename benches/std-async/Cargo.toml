@@ -1,0 +1,10 @@
+[package]
+name = "vma-socket-std-async"
+version = "0.1.5"
+edition = "2021"
+
+[dependencies]
+vma-socket = { version = "0.1.5", path = "../../" }
+async-std = "1.13.1"
+flashlog = "0.3.1"
+core_affinity = "0.8.3"
